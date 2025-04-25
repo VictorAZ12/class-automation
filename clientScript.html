@@ -143,7 +143,11 @@
           if (inputSheetLink) {
             console.log("Processing sheet with link:", inputSheetLink);
             // Call server-side function to process the sheet
-            google.script.run.withSuccessHandler((res) => {console.log(JSON.parse(res))}).processSheet(inputSheetLink);
+            google.script.run.withSuccessHandler((res) => {
+                console.log(JSON.parse(res).message);
+                alert(JSON.parse(res).message);
+
+            }).processSheetData(selectedFolderId,inputSheetLink);
           } else {
             alert("Please enter a valid Google Sheets link.");
           }

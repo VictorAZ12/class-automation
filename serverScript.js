@@ -105,8 +105,8 @@ function parseTime(timeStr) {
 }
 
 function processSheetData(folderId, sheetUrl) {
-//   folderId = '1xg9SjmOe_uIDKr8BzDwWpyPMhzyNWgXX';
-//   sheetUrl = 'https://docs.google.com/spreadsheets/d/1gGT-JXSgSW29eIbVNaTj_QuQEh-_tVa8Z-fVD3qjY_k'
+  // folderId = '1xg9SjmOe_uIDKr8BzDwWpyPMhzyNWgXX';
+  // sheetUrl = 'https://docs.google.com/spreadsheets/d/1gGT-JXSgSW29eIbVNaTj_QuQEh-_tVa8Z-fVD3qjY_k'
   try {
     // 提取 Google Sheet 文件 ID
     var sheetId = extractSheetId(sheetUrl);
@@ -202,7 +202,9 @@ function processSheetData(folderId, sheetUrl) {
     Logger.log(JSON.stringify(teacherSchedules));
     // 获取输出文件夹
     var folder = DriveApp.getFolderById(folderId);
-
+    // 定义背景颜色（light orange 3, light green 3, light blue 3, light red 3）
+    var colors = ['#f6d7b0', '#b7e1cd', '#b3cde3', '#f4c7c3'];
+    var colorIndex = 0; // 用于循环分配颜色
     // 为每位老师生成 Google Sheet 课表
     Object.keys(teacherSchedules).forEach(teacher => {
       var { email, classes } = teacherSchedules[teacher];
@@ -240,7 +242,7 @@ function processSheetData(folderId, sheetUrl) {
       // 初始化课表数据（行：时间槽，列：星期一到星期日）
       var days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
       var scheduleData = timeSlots.map(() => days.map(() => ''));
-
+      var backgroundColors = timeSlots.map(() => days.map(() => null)); // 存储背景颜色
       // 填充课表
       classes.forEach(cls => {
         var start = parseTime(cls['Start Time (hh:mm)']);
@@ -253,11 +255,16 @@ function processSheetData(folderId, sheetUrl) {
         // 找到时间范围内的行
         var startRow = timeSlots.findIndex(t => t.getTime() >= start.getTime());
         var endRow = timeSlots.findIndex(t => t.getTime() >= end.getTime());
+        
+
         if (startRow === -1 || endRow === -1) return;
+        // 分配当前课程的背景颜色
+        var currentColor = colors[colorIndex % colors.length];
+        colorIndex++; // 下一个课程使用下一种颜色
 
         // 填充内容（按优先级）
         var contents = [
-          `${formatTime(start)} - ${formatTime(end)}`,
+          `[Time: ${formatTime(start)} - ${formatTime(end)}]`,
           cls['Course Name'] || '',
           cls['Room'] || '',
           cls['Course Type'] || '',
@@ -267,6 +274,8 @@ function processSheetData(folderId, sheetUrl) {
           if (i - startRow < contents.length) {
             scheduleData[i][dayIndex] = contents[i - startRow];
           }
+          // 设置背景颜色
+          backgroundColors[i][dayIndex] = currentColor;
         }
       });
 
@@ -283,12 +292,28 @@ function processSheetData(folderId, sheetUrl) {
       var dataRange = sheet.getRange(2, 1, timeSlots.length, headerRow.length);
       var dataValues = timeSlots.map((_, i) => [timeLabels[i], ...scheduleData[i]]);
       dataRange.setValues(dataValues);
-
+      // 设置背景颜色
+      for (var i = 0; i < timeSlots.length; i++) {
+        for (var j = 0; j < days.length; j++) {
+          if (backgroundColors[i][j]) {
+            sheet.getRange(i + 2, j + 2).setBackground(backgroundColors[i][j]);
+          }
+        }
+      }
       // 格式化表格
       sheet.getRange(1, 1, 1, headerRow.length).setFontWeight('bold');
       sheet.getRange(2, 1, timeSlots.length, 1).setFontWeight('bold');
       sheet.setFrozenRows(1);
       sheet.setFrozenColumns(1);
+
+      // 设置所有列居中
+      sheet.getRange(1, 1, timeSlots.length + 1, headerRow.length).setHorizontalAlignment('center');
+
+      // 设置列宽为240像素
+      for (var col = 1; col <= headerRow.length; col++) {
+        sheet.setColumnWidth(col, 240);
+      }
+
 
       // 移动文件到指定文件夹
       var file = DriveApp.getFileById(newSpreadsheet.getId());
@@ -307,7 +332,10 @@ function processSheetData(folderId, sheetUrl) {
       message: `Created ${Object.keys(teacherSchedules).length} teacher schedules in the specified folder.`
     });
   } catch (e) {
-    throw new Error('Failed to process sheet: ' + e.message);
+    return JSON.stringify({
+      status: 'success',
+      message: 'Failed to process sheet: ' + e.message
+    });
   }
 }
 
