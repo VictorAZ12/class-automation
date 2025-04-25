@@ -7,19 +7,6 @@ This project allows users to process data from Google Sheets and save the result
 - Users can provide a link to a Google Sheets file.
 - Users must authorize access to the Google Sheets file and a Google Drive folder.
 - A button is provided to initiate the processing of the data after authorization is granted.
-
-## Project Structure
-
-```
-google-sheets-processor
-├── index.html        # Main HTML document
-├── css
-│   └── style.css     # Styles for the HTML elements
-├── js
-│   └── script.js     # JavaScript code for handling user interactions
-└── README.md         # Project documentation
-```
-
 ## Setup Instructions
 
 1. Clone the repository to your local machine.
