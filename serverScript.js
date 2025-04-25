@@ -86,14 +86,18 @@ function doGet(request) {
   var match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   return match ? match[1] : null;
 }
-// 格式化时间为 HH:MM
+
+// 辅助函数：将 Date 对象格式化为 hh:mm 字符串
 function formatTime(date) {
-  return Utilities.formatDate(date, Session.getScriptTimeZone(), 'HH:mm');
+  if (!(date instanceof Date) || isNaN(date)) return '';
+  var hours = date.getHours().toString().padStart(2, '0');
+  var minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${hours}:${minutes}`;
 }
 
-function processSheet(folderId, sheetUrl) {
-//   folderId = '1xg9SjmOe_uIDKr8BzDwWpyPMhzyNWgXX';
-//   sheetUrl = 'https://docs.google.com/spreadsheets/d/1gGT-JXSgSW29eIbVNaTj_QuQEh-_tVa8Z-fVD3qjY_k'
+function processSheetData(folderId, sheetUrl) {
+  folderId = '1xg9SjmOe_uIDKr8BzDwWpyPMhzyNWgXX';
+  sheetUrl = 'https://docs.google.com/spreadsheets/d/1gGT-JXSgSW29eIbVNaTj_QuQEh-_tVa8Z-fVD3qjY_k'
   try {
     // 提取 Google Sheet 文件 ID
     var sheetId = extractSheetId(sheetUrl);
@@ -129,9 +133,20 @@ function processSheet(folderId, sheetUrl) {
     if (weekdayIndex === -1) throw new Error('Column "Weekday" not found.');
 
     var filteredData = [];
+    var startTimeIndex = headers.indexOf('Start Time (hh:mm)');
+    var endTimeIndex = headers.indexOf('End Time (hh:mm)');
+    if (startTimeIndex === -1 || endTimeIndex === -1) throw new Error('Time columns not found.');
     for (var i = 1; i < courseData.length; i++) {
       if (courseData[i][weekdayIndex] && courseData[i][weekdayIndex].toString().trim() !== '') {
-        filteredData.push(courseData[i]);
+        var row = courseData[i].slice(); // 复制行数据
+        // 格式化时间字段为 hh:mm
+        if (row[startTimeIndex] instanceof Date) {
+          row[startTimeIndex] = formatTime(row[startTimeIndex]);
+        }
+        if (row[endTimeIndex] instanceof Date) {
+          row[endTimeIndex] = formatTime(row[endTimeIndex]);
+        }
+        filteredData.push(row);
       }
     }
     if (filteredData.length === 0) throw new Error('No rows with non-empty Weekday found.');
@@ -159,7 +174,7 @@ function processSheet(folderId, sheetUrl) {
         }
       });
     });
-
+    Logger.log(JSON.stringify(teacherSchedules));
     // 获取输出文件夹
     var folder = DriveApp.getFolderById(folderId);
 
