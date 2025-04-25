@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Sheets Processor</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Google Sheets Processor</h1>
+        <div class="input-group">
+            <label for="sheetLink">Google Sheets Link:</label>
+            <input type="text" id="sheetLink" placeholder="Enter Google Sheets link" required>
+        </div>
+        <div class="input-group">
+            <label for="driveFolder">Google Drive Folder Authorization:</label>
+            <input type="text" id="driveFolder" placeholder="Enter Google Drive folder ID" required>
+        </div>
+        <button id="authorizeButton">Authorize</button>
+        <button id="processButton" disabled>Process</button>
+    </div>
+    <script src="js/script.js"></script>
+</body>
+</html>
