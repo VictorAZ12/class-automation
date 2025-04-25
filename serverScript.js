@@ -94,10 +94,19 @@ function formatTime(date) {
   var minutes = date.getMinutes().toString().padStart(2, '0');
   return `${hours}:${minutes}`;
 }
+// 解析 hh:mm 字符串为当天的 Date 对象
+function parseTime(timeStr) {
+  if (!timeStr || typeof timeStr !== 'string') return null;
+  var [hours, minutes] = timeStr.split(':').map(Number);
+  if (isNaN(hours) || isNaN(minutes)) return null;
+  var date = new Date();
+  date.setHours(hours, minutes, 0, 0);
+  return date;
+}
 
 function processSheetData(folderId, sheetUrl) {
-  folderId = '1xg9SjmOe_uIDKr8BzDwWpyPMhzyNWgXX';
-  sheetUrl = 'https://docs.google.com/spreadsheets/d/1gGT-JXSgSW29eIbVNaTj_QuQEh-_tVa8Z-fVD3qjY_k'
+//   folderId = '1xg9SjmOe_uIDKr8BzDwWpyPMhzyNWgXX';
+//   sheetUrl = 'https://docs.google.com/spreadsheets/d/1gGT-JXSgSW29eIbVNaTj_QuQEh-_tVa8Z-fVD3qjY_k'
   try {
     // 提取 Google Sheet 文件 ID
     var sheetId = extractSheetId(sheetUrl);
@@ -146,6 +155,22 @@ function processSheetData(folderId, sheetUrl) {
         if (row[endTimeIndex] instanceof Date) {
           row[endTimeIndex] = formatTime(row[endTimeIndex]);
         }
+        // 验证时间
+        var start = parseTime(row[startTimeIndex]);
+        var end = parseTime(row[endTimeIndex]);
+        if (!start || !end) {
+          Logger.log(`Warning: Invalid time format in row ${i + 1}: Start=${row[startTimeIndex]}, End=${row[endTimeIndex]}`);
+          continue;
+        }
+        if (end.getTime() <= start.getTime()) {
+          Logger.log(`Warning: End time before start time in row ${i + 1}: Start=${row[startTimeIndex]}, End=${row[endTimeIndex]}`);
+          continue;
+        }
+        // 检查异常长的课程（例如超过 3 小时）
+        var durationHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+        if (durationHours > 3) {
+          Logger.log(`Warning: Unusually long course in row ${i + 1}: ${durationHours.toFixed(2)} hours`);
+        }
         filteredData.push(row);
       }
     }
@@ -186,10 +211,14 @@ function processSheetData(folderId, sheetUrl) {
       // 确定时间范围
       var times = [];
       classes.forEach(cls => {
-        var start = new Date(cls['Start Time (hh:mm)']);
-        var end = new Date(cls['End Time (hh:mm)']);
-        times.push(start, end);
+        var start = parseTime(cls['Start Time (hh:mm)']);
+        var end = parseTime(cls['End Time (hh:mm)']);
+        if (start && end) {
+          times.push(start, end);
+        }
       });
+
+      if (times.length === 0) return; // 跳过没有有效时间的老师
 
       var minTime = new Date(Math.min(...times));
       var maxTime = new Date(Math.max(...times));
@@ -214,8 +243,9 @@ function processSheetData(folderId, sheetUrl) {
 
       // 填充课表
       classes.forEach(cls => {
-        var start = new Date(cls['Start Time (hh:mm)']);
-        var end = new Date(cls['End Time (hh:mm)']);
+        var start = parseTime(cls['Start Time (hh:mm)']);
+        var end = parseTime(cls['End Time (hh:mm)']);
+        if (!start || !end) return; // 跳过无效时间
         var day = cls['Weekday'];
         var dayIndex = days.indexOf(day);
         if (dayIndex === -1) return; // 跳过无效星期
