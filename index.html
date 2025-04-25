@@ -10,6 +10,14 @@
 <body>
     <div class="container">
         <h1>Google Sheets Processor</h1>
+        <div class="input-group">
+            <label for="sheetLink">Google Sheets Link:</label>
+            <input type="text" id="sheetLink" placeholder="Enter Google Sheets link" required>
+            <!-- Add a button to call server script to retrievethe data from the sheet -->
+            <button id="processButton" class="btn btn-primary" onclick="processSheet()">Process</button>
+        </div>
+        
+        
         <div id="folderSelectContainer" class="container">
             <h2 id="promptMessage"></h2>
             <div class="mb-3">
@@ -23,15 +31,6 @@
               <button id="confirmSelectBtn" class="btn btn-success">Confirm Selection</button>
             </div>
         </div>
-        <div class="input-group">
-            <label for="sheetLink">Google Sheets Link:</label>
-            <input type="text" id="sheetLink" placeholder="Enter Google Sheets link" required>
-        </div>
-        <div class="input-group">
-            <label for="driveFolder">Google Drive Folder Authorization:</label>
-            <input type="text" id="driveFolder" placeholder="Enter Google Drive folder ID" required>
-        </div>
-        <button id="authorizeButton">Authorize</button>
         <button id="processButton" disabled>Process</button>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/js/bootstrap.bundle.min.js" integrity="sha384-k6d4wzSIapyDyv1kpU366/PK5hCdSbCRGRCMv+eplOQJWyd1fbcAu9OCUj5zNLiq" crossorigin="anonymous"></script>

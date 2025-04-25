@@ -82,3 +82,15 @@ function doGet(request) {
     // construct a path string "Drive App/.../.../folder"
     return JSON.parse(getFolderPath(folderId)).map(folder => folder.name).join("/");
   }
+
+  function processSheet(sheetLink){
+    const validSheetLink = sheetLink? sheetLink : 'Placeholder';
+    res = {
+        'status': 'ok',
+        'message': 'Sheet processed successfully',
+        'sheetLink': validSheetLink
+    }
+    Logger.log("Response: %s", JSON.stringify(res));
+    return JSON.stringify(res)
+    
+  }
