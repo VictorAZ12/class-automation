@@ -86,9 +86,15 @@ function doGet(request) {
   var match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   return match ? match[1] : null;
 }
-    function processSheet(sheetUrl) {
-    // sheetUrl = 'https://docs.google.com/spreadsheets/d/1gGT-JXSgSW29eIbVNaTj_QuQEh-_tVa8Z-fVD3qjY_k';
-    try {
+// 格式化时间为 HH:MM
+function formatTime(date) {
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), 'HH:mm');
+}
+
+function processSheet(folderId, sheetUrl) {
+//   folderId = '1xg9SjmOe_uIDKr8BzDwWpyPMhzyNWgXX';
+//   sheetUrl = 'https://docs.google.com/spreadsheets/d/1gGT-JXSgSW29eIbVNaTj_QuQEh-_tVa8Z-fVD3qjY_k'
+  try {
     // 提取 Google Sheet 文件 ID
     var sheetId = extractSheetId(sheetUrl);
     if (!sheetId) throw new Error('Invalid Google Sheet URL.');
@@ -136,7 +142,6 @@ function doGet(request) {
     if (teacherIndex === -1) throw new Error('Column "Teacher" not found.');
 
     filteredData.forEach(row => {
-      // 分割 Teacher 列（可能包含多个老师，用逗号分隔）
       var teachers = row[teacherIndex].toString().split(',').map(t => t.trim());
       teachers.forEach(teacher => {
         if (teacher && teacherEmailMap[teacher]) {
@@ -146,7 +151,6 @@ function doGet(request) {
               classes: []
             };
           }
-          // 将课程信息添加到老师的课表
           var classInfo = {};
           headers.forEach((header, index) => {
             classInfo[header] = row[index];
@@ -156,17 +160,109 @@ function doGet(request) {
       });
     });
 
-    // 转换为要求的格式：数组形式
-    var result = Object.keys(teacherSchedules).map(teacher => ({
-      [teacher]: teacherSchedules[teacher]
-    }));
-    Logger.log(JSON.stringify(result))
-    // 返回结果
+    // 获取输出文件夹
+    var folder = DriveApp.getFolderById(folderId);
+
+    // 为每位老师生成 Google Sheet 课表
+    Object.keys(teacherSchedules).forEach(teacher => {
+      var { email, classes } = teacherSchedules[teacher];
+      if (classes.length === 0) return; // 跳过没有课程的老师
+
+      // 确定时间范围
+      var times = [];
+      classes.forEach(cls => {
+        var start = new Date(cls['Start Time (hh:mm)']);
+        var end = new Date(cls['End Time (hh:mm)']);
+        times.push(start, end);
+      });
+
+      var minTime = new Date(Math.min(...times));
+      var maxTime = new Date(Math.max(...times));
+      // 调整 minTime 到最近的 15 分钟间隔
+      minTime.setSeconds(0, 0);
+      minTime.setMinutes(Math.floor(minTime.getMinutes() / 15) * 15);
+      // 调整 maxTime 到下一个 15 分钟间隔
+      maxTime.setSeconds(0, 0);
+      maxTime.setMinutes(Math.ceil(maxTime.getMinutes() / 15) * 15);
+
+      // 生成时间槽
+      var timeSlots = [];
+      var current = new Date(minTime);
+      while (current <= maxTime) {
+        timeSlots.push(new Date(current));
+        current.setMinutes(current.getMinutes() + 15);
+      }
+
+      // 初始化课表数据（行：时间槽，列：星期一到星期日）
+      var days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      var scheduleData = timeSlots.map(() => days.map(() => ''));
+
+      // 填充课表
+      classes.forEach(cls => {
+        var start = new Date(cls['Start Time (hh:mm)']);
+        var end = new Date(cls['End Time (hh:mm)']);
+        var day = cls['Weekday'];
+        var dayIndex = days.indexOf(day);
+        if (dayIndex === -1) return; // 跳过无效星期
+
+        // 找到时间范围内的行
+        var startRow = timeSlots.findIndex(t => t.getTime() >= start.getTime());
+        var endRow = timeSlots.findIndex(t => t.getTime() >= end.getTime());
+        if (startRow === -1 || endRow === -1) return;
+
+        // 填充内容（按优先级）
+        var contents = [
+          `${formatTime(start)} - ${formatTime(end)}`,
+          cls['Course Name'] || '',
+          cls['Room'] || '',
+          cls['Course Type'] || '',
+          cls['Notes'] || ''
+        ];
+        for (var i = startRow; i <= endRow && i < timeSlots.length; i++) {
+          if (i - startRow < contents.length) {
+            scheduleData[i][dayIndex] = contents[i - startRow];
+          }
+        }
+      });
+
+      // 创建新的 Google Sheet
+      var newSpreadsheet = SpreadsheetApp.create(`${teacher}'s Weekly Schedule`);
+      var sheet = newSpreadsheet.getSheets()[0];
+
+      // 设置表头（第一列为空，第二列到第八列为星期）
+      var headerRow = ['Time', ...days];
+      sheet.getRange(1, 1, 1, headerRow.length).setValues([headerRow]);
+
+      // 设置时间列和课表数据
+      var timeLabels = timeSlots.map(t => formatTime(t));
+      var dataRange = sheet.getRange(2, 1, timeSlots.length, headerRow.length);
+      var dataValues = timeSlots.map((_, i) => [timeLabels[i], ...scheduleData[i]]);
+      dataRange.setValues(dataValues);
+
+      // 格式化表格
+      sheet.getRange(1, 1, 1, headerRow.length).setFontWeight('bold');
+      sheet.getRange(2, 1, timeSlots.length, 1).setFontWeight('bold');
+      sheet.setFrozenRows(1);
+      sheet.setFrozenColumns(1);
+
+      // 移动文件到指定文件夹
+      var file = DriveApp.getFileById(newSpreadsheet.getId());
+      file.moveTo(folder);
+
+      // 分享文件给老师
+      try {
+        file.addEditor(email);
+      } catch (e) {
+        Logger.log(`Failed to share file with ${email}: ${e.message}`);
+      }
+    });
+
     return JSON.stringify({
       status: 'success',
-      data: result
+      message: `Created ${Object.keys(teacherSchedules).length} teacher schedules in the specified folder.`
     });
   } catch (e) {
     throw new Error('Failed to process sheet: ' + e.message);
   }
 }
+
