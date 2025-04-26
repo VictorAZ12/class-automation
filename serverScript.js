@@ -1,341 +1,423 @@
 function doGet(request) {
-    // initiate html service
-    return HtmlService.createTemplateFromFile('Index')
-        .evaluate();
+  // initiate html service
+  return HtmlService.createTemplateFromFile('Index')
+      .evaluate();
+}
+function include(filename) {
+  // include css and js into html template (printing scriptlets)
+  return HtmlService.createHtmlOutputFromFile(filename)
+      .getContent();
+}
+
+function retrieveFolders(){
+  // retrieve all folders and display names
+  let folders = DriveApp.getFolders();
+  while (folders.hasNext()) {
+    let folder = folders.next();
+    Logger.log("Folder: %s, id %s",folder.getName(), folder.getId());
   }
-  function include(filename) {
-    // include css and js into html template (printing scriptlets)
-    return HtmlService.createHtmlOutputFromFile(filename)
-        .getContent();
-  }
-  
-  function retrieveFolders(){
-    // retrieve all folders and display names
-    let folders = DriveApp.getFolders();
-    while (folders.hasNext()) {
-      let folder = folders.next();
-      Logger.log("Folder: %s, id %s",folder.getName(), folder.getId());
-    }
-  }
-  
-  function getFoldersInFolder(folderId) {
-    // retrieve the given folder, otherwise root folder is used
-    // return a list of folder in JSON: {[{id, name}, ...]}
-  
-    // get folder
-    let folder;
-    if (folderId) {
-      folder = DriveApp.getFolderById(folderId);
-    } else {
-      folder = DriveApp.getRootFolder();
-    }
-    
-    // get subfolders
-    let folders = folder.getFolders();
-    let folderList = [];
-    while (folders.hasNext()) {
-      let subFolder = folders.next();
-      folderList.push({
-        id: subFolder.getId(),
-        name: subFolder.getName()
-      });
-    }
-    return JSON.stringify(folderList);
+}
+
+function getFoldersInFolder(folderId) {
+  // retrieve the given folder, otherwise root folder is used
+  // return a list of folder in JSON: {[{id, name}, ...]}
+
+  // get folder
+  let folder;
+  if (folderId) {
+    folder = DriveApp.getFolderById(folderId);
+  } else {
+    folder = DriveApp.getRootFolder();
   }
   
-  function getFolderPath(folderId) {
-    // get a folder's path structure using its id
-    // return a list folder path in JSON {[{id, name}, ...]}
-    // the first element should be the root folder "Drive App", the last element should be the 
-    // given folder if it's not root
+  // get subfolders
+  let folders = folder.getFolders();
+  let folderList = [];
+  while (folders.hasNext()) {
+    let subFolder = folders.next();
+    folderList.push({
+      id: subFolder.getId(),
+      name: subFolder.getName()
+    });
+  }
+  return JSON.stringify(folderList);
+}
+
+function getFolderPath(folderId) {
+  // get a folder's path structure using its id
+  // return a list folder path in JSON {[{id, name}, ...]}
+  // the first element should be the root folder "Drive App", the last element should be the 
+  // given folder if it's not root
+
+  // get folder
+  let path = [];
+  let folder;
+  if (folderId) {
+    folder = DriveApp.getFolderById(folderId);
+  }
+  else {
+    folder = DriveApp.getRootFolder();
+  }
   
-    // get folder
-    let path = [];
-    let folder;
-    if (folderId) {
-      folder = DriveApp.getFolderById(folderId);
+  // get all parent folders
+  while (folder) {
+    path.unshift({
+      id: folder.getId(),
+      name: folder.getName()
+    });
+
+    let parents = folder.getParents();
+    if (parents.hasNext()) {
+      folder = parents.next();
     }
     else {
-      folder = DriveApp.getRootFolder();
+      folder = null;
     }
-    
-    // get all parent folders
-    while (folder) {
-      path.unshift({
-        id: folder.getId(),
-        name: folder.getName()
-      });
-  
-      let parents = folder.getParents();
-      if (parents.hasNext()) {
-        folder = parents.next();
-      }
-      else {
-        folder = null;
-      }
-    }
-    return JSON.stringify(path);
-    
   }
+  return JSON.stringify(path);
   
-  function getFolderPathString(folderId){
-    // construct a path string "Drive App/.../.../folder"
-    return JSON.parse(getFolderPath(folderId)).map(folder => folder.name).join("/");
-  }
-  function extractSheetId(url) {
-  var match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-  return match ? match[1] : null;
+}
+
+function getFolderPathString(folderId){
+  // construct a path string "Drive App/.../.../folder"
+  return JSON.parse(getFolderPath(folderId)).map(folder => folder.name).join("/");
+}
+
+// 辅助函数：提取 Google Sheet ID
+function extractSheetId(url) {
+var match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+return match ? match[1] : null;
 }
 
 // 辅助函数：将 Date 对象格式化为 hh:mm 字符串
 function formatTime(date) {
-  if (!(date instanceof Date) || isNaN(date)) return '';
-  var hours = date.getHours().toString().padStart(2, '0');
-  var minutes = date.getMinutes().toString().padStart(2, '0');
-  return `${hours}:${minutes}`;
+if (!(date instanceof Date) || isNaN(date)) return '';
+var hours = date.getHours().toString().padStart(2, '0');
+var minutes = date.getMinutes().toString().padStart(2, '0');
+return `${hours}:${minutes}`;
 }
-// 解析 hh:mm 字符串为当天的 Date 对象
+
+// 辅助函数：解析 hh:mm 字符串为当天的 Date 对象
 function parseTime(timeStr) {
-  if (!timeStr || typeof timeStr !== 'string') return null;
-  var [hours, minutes] = timeStr.split(':').map(Number);
-  if (isNaN(hours) || isNaN(minutes)) return null;
-  var date = new Date();
-  date.setHours(hours, minutes, 0, 0);
-  return date;
+if (!timeStr || typeof timeStr !== 'string') return null;
+var [hours, minutes] = timeStr.split(':').map(Number);
+if (isNaN(hours) || isNaN(minutes)) return null;
+var date = new Date();
+date.setHours(hours, minutes, 0, 0);
+return date;
 }
 
-function processSheetData(folderId, sheetUrl) {
-  // folderId = '1xg9SjmOe_uIDKr8BzDwWpyPMhzyNWgXX';
-  // sheetUrl = 'https://docs.google.com/spreadsheets/d/1gGT-JXSgSW29eIbVNaTj_QuQEh-_tVa8Z-fVD3qjY_k'
-  try {
-    // 提取 Google Sheet 文件 ID
-    var sheetId = extractSheetId(sheetUrl);
-    if (!sheetId) throw new Error('Invalid Google Sheet URL.');
+/**
+* 处理多个 Google Sheets 的数据，生成教师课表
+* @param {string} folderId 输出文件夹的 Google Drive ID
+* @param {Object[]} sheetData 包含 [{ sheetLink, campusName }, ...] 的数组
+* @returns {string} JSON 格式的结果，包含处理状态和消息
+*/
+function processSheetData(folderId, sheetData) {
+try {
+  // 验证输入
+  if (!folderId) throw new Error('Output folder ID is missing.');
+  if (!sheetData || !Array.isArray(sheetData) || sheetData.length === 0) {
+    throw new Error('Sheet data is empty or invalid.');
+  }
 
-    // 打开 Google Sheet
-    var spreadsheet = SpreadsheetApp.openById(sheetId);
+  // 获取输出文件夹
+  var folder = DriveApp.getFolderById(folderId);
 
-    // 获取 "Course Data" 工作表
-    var courseSheet = spreadsheet.getSheetByName('Course Data');
-    if (!courseSheet) throw new Error('Sheet "Course Data" not found.');
+  // 全局教师映射：Email 到首次出现的教师名字
+  var emailToTeacherMap = {};
+  // 校区特定的教师到 Email 映射：{ campusName: { teacherName: email } }
+  var teacherToEmailMap = {};
+  // 教师课表数据：{ email: { classes: [], campusNames: Set } }
+  var teacherSchedules = {};
 
-    // 获取 "Teacher and Room data" 工作表
-    var teacherSheet = spreadsheet.getSheetByName('Teacher and Room data');
-    if (!teacherSheet) throw new Error('Sheet "Teacher and Room data" not found.');
+  // 处理结果
+  var results = [];
 
-    // 读取 "Teacher and Room data" 的 Teacher 和 Email 列
-    var teacherData = teacherSheet.getRange('A2:B' + teacherSheet.getLastRow()).getValues();
-    var teacherEmailMap = {};
-    teacherData.forEach(row => {
-      if (row[0] && row[1]) {
-        teacherEmailMap[row[0].toString().trim()] = row[1].toString().trim();
+  // 遍历每个 Sheet
+  sheetData.forEach(({ sheetLink, campusName }, index) => {
+    try {
+      Logger.log(`Processing sheet ${index + 1}: ${sheetLink} (Campus: ${campusName})`);
+
+      // 提取 Sheet ID
+      var sheetId = extractSheetId(sheetLink);
+      if (!sheetId) throw new Error('Invalid Google Sheet URL.');
+
+      // 打开 Google Sheet
+      var spreadsheet = SpreadsheetApp.openById(sheetId);
+
+      // 检查 Control 表
+      var controlSheet = spreadsheet.getSheetByName('Control');
+      if (!controlSheet) throw new Error('Sheet "Control" not found.');
+      var controlData = controlSheet.getRange('A1:B2').getValues();
+      if (controlData[0][0] !== 'Flag' || controlData[0][1] !== 'Value') {
+        throw new Error('Invalid headers in "Control" sheet.');
+      }
+      if (controlData[1][0] !== 'generateTeacherSchedule?' || controlData[1][1].toString().toLowerCase() !== 'yes') {
+        Logger.log(`Skipping ${campusName}: generateTeacherSchedule? is not "Yes".`);
+        results.push({
+          campusName,
+          status: 'skipped',
+          message: 'generateTeacherSchedule? is not set to Yes.'
+        });
+        return;
+      }
+
+      // 获取 Teacher Data 表
+      var teacherSheet = spreadsheet.getSheetByName('Teacher Data');
+      if (!teacherSheet) throw new Error('Sheet "Teacher Data" not found.');
+      var teacherData = teacherSheet.getRange('A1:C' + teacherSheet.getLastRow()).getValues();
+      if (teacherData[0][0] !== 'Teacher' || teacherData[0][1] !== 'Email' || teacherData[0][2] !== 'NeedUpdate?') {
+        throw new Error('Invalid headers in "Teacher Data" sheet.');
+      }
+
+      // 构建校区教师到 Email 的映射
+      teacherToEmailMap[campusName] = {};
+      for (var i = 1; i < teacherData.length; i++) {
+        var teacherName = teacherData[i][0] ? teacherData[i][0].toString().trim() : '';
+        var email = teacherData[i][1] ? teacherData[i][1].toString().trim() : '';
+        if (teacherName && email) {
+          teacherToEmailMap[campusName][teacherName] = email;
+          if (!emailToTeacherMap[email]) {
+            emailToTeacherMap[email] = teacherName; // 记录首次出现的教师名字
+          }
+        }
+      }
+
+      // 获取 Course Data 表
+      var courseSheet = spreadsheet.getSheetByName('Course Data');
+      if (!courseSheet) throw new Error('Sheet "Course Data" not found.');
+      var courseData = courseSheet.getDataRange().getValues();
+      if (courseData.length <= 1) throw new Error('No data found in "Course Data" sheet.');
+
+      // 验证表头
+      var headers = courseData[0];
+      var requiredHeaders = [
+        'Validation', 'Weekday', 'Start Time', 'End Time', 'Room',
+        'Teacher', 'Course Name', 'Course Type', 'Student Count', 'Students', 'Notes'
+      ];
+      var missingHeaders = requiredHeaders.filter(h => headers.indexOf(h) === -1);
+      if (missingHeaders.length > 0) {
+        throw new Error(`Missing headers in "Course Data": ${missingHeaders.join(', ')}`);
+      }
+
+      // 提取有效课程数据
+      var weekdayIndex = headers.indexOf('Weekday');
+      var startTimeIndex = headers.indexOf('Start Time');
+      var endTimeIndex = headers.indexOf('End Time');
+      var teacherIndex = headers.indexOf('Teacher');
+
+      var filteredData = [];
+      for (var i = 1; i < courseData.length; i++) {
+        if (courseData[i][weekdayIndex] && courseData[i][weekdayIndex].toString().trim() !== '') {
+          var row = courseData[i].slice();
+          // 格式化时间字段为 hh:mm
+          if (row[startTimeIndex] instanceof Date) {
+            row[startTimeIndex] = formatTime(row[startTimeIndex]);
+          }
+          if (row[endTimeIndex] instanceof Date) {
+            row[endTimeIndex] = formatTime(row[endTimeIndex]);
+          }
+          // 验证时间
+          var start = parseTime(row[startTimeIndex]);
+          var end = parseTime(row[endTimeIndex]);
+          if (!start || !end) {
+            Logger.log(`Warning: Invalid time format in ${campusName}, row ${i + 1}: Start=${row[startTimeIndex]}, End=${row[endTimeIndex]}`);
+            continue;
+          }
+          if (end.getTime() <= start.getTime()) {
+            Logger.log(`Warning: End time before start time in ${campusName}, row ${i + 1}: Start=${row[startTimeIndex]}, End=${row[endTimeIndex]}`);
+            continue;
+          }
+          // 检查异常长的课程（超过 3 小时）
+          var durationHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+          if (durationHours > 3) {
+            Logger.log(`Warning: Unusually long course in ${campusName}, row ${i + 1}: ${durationHours.toFixed(2)} hours`);
+          }
+          filteredData.push(row);
+        }
+      }
+
+      // 处理课程数据
+      filteredData.forEach(row => {
+        var teachers = row[teacherIndex].toString().split(',').map(t => t.trim());
+        teachers.forEach(teacher => {
+          if (teacher && teacherToEmailMap[campusName][teacher]) {
+            var email = teacherToEmailMap[campusName][teacher];
+            if (!teacherSchedules[email]) {
+              teacherSchedules[email] = {
+                classes: [],
+                campusNames: new Set()
+              };
+            }
+            var classInfo = {};
+            headers.forEach((header, index) => {
+              classInfo[header] = row[index];
+            });
+            classInfo['Campus Name'] = campusName; // 添加校区名称
+            teacherSchedules[email].classes.push(classInfo);
+            teacherSchedules[email].campusNames.add(campusName);
+          }
+        });
+      });
+
+      results.push({
+        campusName,
+        status: 'success',
+        message: `Processed ${filteredData.length} valid courses for ${campusName}.`
+      });
+    } catch (e) {
+      Logger.log(`Error processing ${campusName}: ${e.message}`);
+      results.push({
+        campusName,
+        status: 'error',
+        message: `Failed to process ${campusName}: ${e.message}`
+      });
+    }
+  });
+
+  // 生成教师课表
+  var colors = ['#f6d7b0', '#b7e1cd', '#b3cde3', '#f4c7c3']; // light orange, green, blue, red
+  var colorIndex = 0;
+
+  Object.keys(teacherSchedules).forEach(email => {
+    var { classes, campusNames } = teacherSchedules[email];
+    if (classes.length === 0) return;
+
+    // 使用首次出现的教师名字
+    var teacherName = emailToTeacherMap[email] || 'Unknown';
+    Logger.log(`Generating schedule for ${teacherName} (${email})`);
+
+    // 确定时间范围
+    var times = [];
+    classes.forEach(cls => {
+      var start = parseTime(cls['Start Time']);
+      var end = parseTime(cls['End Time']);
+      if (start && end) {
+        times.push(start, end);
       }
     });
 
-    // 读取 "Course Data" 的所有数据
-    var courseData = courseSheet.getDataRange().getValues();
-    if (courseData.length <= 1) throw new Error('No data found in "Course Data" sheet.');
+    if (times.length === 0) {
+      Logger.log(`No valid times for ${teacherName} (${email}). Skipping.`);
+      return;
+    }
 
-    // 提取 Weekday 不为空的数据行（除了第一行）
-    var headers = courseData[0]; // 第一行是表头
-    var weekdayIndex = headers.indexOf('Weekday');
-    if (weekdayIndex === -1) throw new Error('Column "Weekday" not found.');
+    var minTime = new Date(Math.min(...times));
+    var maxTime = new Date(Math.max(...times));
+    minTime.setSeconds(0, 0);
+    minTime.setMinutes(Math.floor(minTime.getMinutes() / 15) * 15);
+    maxTime.setSeconds(0, 0);
+    maxTime.setMinutes(Math.ceil(maxTime.getMinutes() / 15) * 15);
 
-    var filteredData = [];
-    var startTimeIndex = headers.indexOf('Start Time (hh:mm)');
-    var endTimeIndex = headers.indexOf('End Time (hh:mm)');
-    if (startTimeIndex === -1 || endTimeIndex === -1) throw new Error('Time columns not found.');
-    for (var i = 1; i < courseData.length; i++) {
-      if (courseData[i][weekdayIndex] && courseData[i][weekdayIndex].toString().trim() !== '') {
-        var row = courseData[i].slice(); // 复制行数据
-        // 格式化时间字段为 hh:mm
-        if (row[startTimeIndex] instanceof Date) {
-          row[startTimeIndex] = formatTime(row[startTimeIndex]);
+    // 生成时间槽
+    var timeSlots = [];
+    var current = new Date(minTime);
+    while (current <= maxTime) {
+      timeSlots.push(new Date(current));
+      current.setMinutes(current.getMinutes() + 15);
+    }
+
+    // 初始化课表数据
+    var days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    var scheduleData = timeSlots.map(() => days.map(() => ''));
+    var backgroundColors = timeSlots.map(() => days.map(() => null));
+
+    // 填充课表
+    classes.forEach(cls => {
+      var start = parseTime(cls['Start Time']);
+      var end = parseTime(cls['End Time']);
+      if (!start || !end) return;
+      var day = cls['Weekday'];
+      var dayIndex = days.indexOf(day);
+      if (dayIndex === -1) return;
+
+      var startRow = timeSlots.findIndex(t => t.getTime() >= start.getTime());
+      var endRow = timeSlots.findIndex(t => t.getTime() >= end.getTime());
+      if (startRow === -1 || endRow === -1) return;
+
+      var currentColor = colors[colorIndex % colors.length];
+      colorIndex++;
+
+      // 填充内容，首行包含校区名称
+      var contents = [
+        `[${cls['Campus Name']}: ${formatTime(start)} - ${formatTime(end)}]`,
+        cls['Course Name'] || '',
+        cls['Room'] || '',
+        cls['Course Type'] || '',
+        cls['Notes'] || ''
+      ];
+      for (var i = startRow; i <= endRow && i < timeSlots.length; i++) {
+        if (i - startRow < contents.length) {
+          scheduleData[i][dayIndex] = contents[i - startRow];
         }
-        if (row[endTimeIndex] instanceof Date) {
-          row[endTimeIndex] = formatTime(row[endTimeIndex]);
+        backgroundColors[i][dayIndex] = currentColor;
+      }
+    });
+
+    // 创建新的 Google Sheet
+    var newSpreadsheet = SpreadsheetApp.create(`${teacherName}_${email}'s Weekly Schedule`);
+    var sheet = newSpreadsheet.getSheets()[0];
+
+    // 设置表头
+    var headerRow = ['Time', ...days];
+    sheet.getRange(1, 1, 1, headerRow.length).setValues([headerRow]);
+
+    // 设置时间列和课表数据
+    var timeLabels = timeSlots.map(t => formatTime(t));
+    var dataRange = sheet.getRange(2, 1, timeSlots.length, headerRow.length);
+    var dataValues = timeSlots.map((_, i) => [timeLabels[i], ...scheduleData[i]]);
+    dataRange.setValues(dataValues);
+
+    // 设置背景颜色
+    for (var i = 0; i < timeSlots.length; i++) {
+      for (var j = 0; j < days.length; j++) {
+        if (backgroundColors[i][j]) {
+          sheet.getRange(i + 2, j + 2).setBackground(backgroundColors[i][j]);
         }
-        // 验证时间
-        var start = parseTime(row[startTimeIndex]);
-        var end = parseTime(row[endTimeIndex]);
-        if (!start || !end) {
-          Logger.log(`Warning: Invalid time format in row ${i + 1}: Start=${row[startTimeIndex]}, End=${row[endTimeIndex]}`);
-          continue;
-        }
-        if (end.getTime() <= start.getTime()) {
-          Logger.log(`Warning: End time before start time in row ${i + 1}: Start=${row[startTimeIndex]}, End=${row[endTimeIndex]}`);
-          continue;
-        }
-        // 检查异常长的课程（例如超过 3 小时）
-        var durationHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-        if (durationHours > 3) {
-          Logger.log(`Warning: Unusually long course in row ${i + 1}: ${durationHours.toFixed(2)} hours`);
-        }
-        filteredData.push(row);
       }
     }
-    if (filteredData.length === 0) throw new Error('No rows with non-empty Weekday found.');
 
-    // 处理老师课表
-    var teacherSchedules = {};
-    var teacherIndex = headers.indexOf('Teacher');
-    if (teacherIndex === -1) throw new Error('Column "Teacher" not found.');
+    // 格式化表格
+    sheet.getRange(1, 1, 1, headerRow.length).setFontWeight('bold');
+    sheet.getRange(2, 1, timeSlots.length, 1).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+    sheet.setFrozenColumns(1);
+    sheet.getRange(1, 1, timeSlots.length + 1, headerRow.length).setHorizontalAlignment('center');
+    for (var col = 1; col <= headerRow.length; col++) {
+      sheet.setColumnWidth(col, 240);
+    }
 
-    filteredData.forEach(row => {
-      var teachers = row[teacherIndex].toString().split(',').map(t => t.trim());
-      teachers.forEach(teacher => {
-        if (teacher && teacherEmailMap[teacher]) {
-          if (!teacherSchedules[teacher]) {
-            teacherSchedules[teacher] = {
-              email: teacherEmailMap[teacher],
-              classes: []
-            };
-          }
-          var classInfo = {};
-          headers.forEach((header, index) => {
-            classInfo[header] = row[index];
-          });
-          teacherSchedules[teacher].classes.push(classInfo);
-        }
-      });
-    });
-    Logger.log(JSON.stringify(teacherSchedules));
-    // 获取输出文件夹
-    var folder = DriveApp.getFolderById(folderId);
-    // 定义背景颜色（light orange 3, light green 3, light blue 3, light red 3）
-    var colors = ['#f6d7b0', '#b7e1cd', '#b3cde3', '#f4c7c3'];
-    var colorIndex = 0; // 用于循环分配颜色
-    // 为每位老师生成 Google Sheet 课表
-    Object.keys(teacherSchedules).forEach(teacher => {
-      var { email, classes } = teacherSchedules[teacher];
-      if (classes.length === 0) return; // 跳过没有课程的老师
+    // 移动文件到指定文件夹
+    var file = DriveApp.getFileById(newSpreadsheet.getId());
+    file.moveTo(folder);
 
-      // 确定时间范围
-      var times = [];
-      classes.forEach(cls => {
-        var start = parseTime(cls['Start Time (hh:mm)']);
-        var end = parseTime(cls['End Time (hh:mm)']);
-        if (start && end) {
-          times.push(start, end);
-        }
-      });
+    // 分享文件给老师
+    try {
+      file.addEditor(email);
+    } catch (e) {
+      Logger.log(`Failed to share file with ${email}: ${e.message}`);
+    }
+  });
 
-      if (times.length === 0) return; // 跳过没有有效时间的老师
+  // 汇总结果
+  var successCount = results.filter(r => r.status === 'success').length;
+  var errorCount = results.filter(r => r.status === 'error').length;
+  var skippedCount = results.filter(r => r.status === 'skipped').length;
+  var message = `Processed ${sheetData.length} sheets: ${successCount} succeeded, ${errorCount} failed, ${skippedCount} skipped.`;
+  Logger.log(message);
 
-      var minTime = new Date(Math.min(...times));
-      var maxTime = new Date(Math.max(...times));
-      // 调整 minTime 到最近的 15 分钟间隔
-      minTime.setSeconds(0, 0);
-      minTime.setMinutes(Math.floor(minTime.getMinutes() / 15) * 15);
-      // 调整 maxTime 到下一个 15 分钟间隔
-      maxTime.setSeconds(0, 0);
-      maxTime.setMinutes(Math.ceil(maxTime.getMinutes() / 15) * 15);
-
-      // 生成时间槽
-      var timeSlots = [];
-      var current = new Date(minTime);
-      while (current <= maxTime) {
-        timeSlots.push(new Date(current));
-        current.setMinutes(current.getMinutes() + 15);
-      }
-
-      // 初始化课表数据（行：时间槽，列：星期一到星期日）
-      var days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-      var scheduleData = timeSlots.map(() => days.map(() => ''));
-      var backgroundColors = timeSlots.map(() => days.map(() => null)); // 存储背景颜色
-      // 填充课表
-      classes.forEach(cls => {
-        var start = parseTime(cls['Start Time (hh:mm)']);
-        var end = parseTime(cls['End Time (hh:mm)']);
-        if (!start || !end) return; // 跳过无效时间
-        var day = cls['Weekday'];
-        var dayIndex = days.indexOf(day);
-        if (dayIndex === -1) return; // 跳过无效星期
-
-        // 找到时间范围内的行
-        var startRow = timeSlots.findIndex(t => t.getTime() >= start.getTime());
-        var endRow = timeSlots.findIndex(t => t.getTime() >= end.getTime());
-        
-
-        if (startRow === -1 || endRow === -1) return;
-        // 分配当前课程的背景颜色
-        var currentColor = colors[colorIndex % colors.length];
-        colorIndex++; // 下一个课程使用下一种颜色
-
-        // 填充内容（按优先级）
-        var contents = [
-          `[Time: ${formatTime(start)} - ${formatTime(end)}]`,
-          cls['Course Name'] || '',
-          cls['Room'] || '',
-          cls['Course Type'] || '',
-          cls['Notes'] || ''
-        ];
-        for (var i = startRow; i <= endRow && i < timeSlots.length; i++) {
-          if (i - startRow < contents.length) {
-            scheduleData[i][dayIndex] = contents[i - startRow];
-          }
-          // 设置背景颜色
-          backgroundColors[i][dayIndex] = currentColor;
-        }
-      });
-
-      // 创建新的 Google Sheet
-      var newSpreadsheet = SpreadsheetApp.create(`${teacher}'s Weekly Schedule`);
-      var sheet = newSpreadsheet.getSheets()[0];
-
-      // 设置表头（第一列为空，第二列到第八列为星期）
-      var headerRow = ['Time', ...days];
-      sheet.getRange(1, 1, 1, headerRow.length).setValues([headerRow]);
-
-      // 设置时间列和课表数据
-      var timeLabels = timeSlots.map(t => formatTime(t));
-      var dataRange = sheet.getRange(2, 1, timeSlots.length, headerRow.length);
-      var dataValues = timeSlots.map((_, i) => [timeLabels[i], ...scheduleData[i]]);
-      dataRange.setValues(dataValues);
-      // 设置背景颜色
-      for (var i = 0; i < timeSlots.length; i++) {
-        for (var j = 0; j < days.length; j++) {
-          if (backgroundColors[i][j]) {
-            sheet.getRange(i + 2, j + 2).setBackground(backgroundColors[i][j]);
-          }
-        }
-      }
-      // 格式化表格
-      sheet.getRange(1, 1, 1, headerRow.length).setFontWeight('bold');
-      sheet.getRange(2, 1, timeSlots.length, 1).setFontWeight('bold');
-      sheet.setFrozenRows(1);
-      sheet.setFrozenColumns(1);
-
-      // 设置所有列居中
-      sheet.getRange(1, 1, timeSlots.length + 1, headerRow.length).setHorizontalAlignment('center');
-
-      // 设置列宽为240像素
-      for (var col = 1; col <= headerRow.length; col++) {
-        sheet.setColumnWidth(col, 240);
-      }
-
-
-      // 移动文件到指定文件夹
-      var file = DriveApp.getFileById(newSpreadsheet.getId());
-      file.moveTo(folder);
-
-      // 分享文件给老师
-      try {
-        file.addEditor(email);
-      } catch (e) {
-        Logger.log(`Failed to share file with ${email}: ${e.message}`);
-      }
-    });
-
-    return JSON.stringify({
-      status: 'success',
-      message: `Created ${Object.keys(teacherSchedules).length} teacher schedules in the specified folder.`
-    });
-  } catch (e) {
-    return JSON.stringify({
-      status: 'success',
-      message: 'Failed to process sheet: ' + e.message
-    });
-  }
+  return JSON.stringify({
+    status: 'success',
+    message,
+    details: results
+  });
+} catch (e) {
+  Logger.log(`Fatal error: ${e.message}`);
+  return JSON.stringify({
+    status: 'error',
+    message: `Failed to process sheets: ${e.message}`,
+    details: []
+  });
 }
-
+}
