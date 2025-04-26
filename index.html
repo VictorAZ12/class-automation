@@ -10,11 +10,25 @@
 <body>
     <div class="container">
         <h1>(In dev) Uplus Schedule Process Tool</h1>
-        <div class="input-group">
-            <label for="sheetLink">Google Sheets Link:</label>
-            <input type="text" id="sheetLink" placeholder="Enter Google Sheets link" required>            
+        <div id="inputGroups" class="input-groups">
+            <!-- 初始输入框组 -->
+            <div class="input-group mb-3" data-index="1">
+                <div class="row w-100">
+                    <div class="col-md-6">
+                        <label for="sheetLink1">Sheet Link 1:</label>
+                        <input type="text" id="sheetLink1" class="form-control" placeholder="Enter Google Sheets link" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="campusName1">Campus Name 1:</label>
+                        <input type="text" id="campusName1" class="form-control" placeholder="Enter campus name" required>
+                    </div>
+                </div>
+            </div>
         </div>
-        
+        <div class="mb-3">
+            <button class="btn btn-primary me-2" onclick="addInputGroup()">Add</button>
+            <button class="btn btn-danger" onclick="deleteInputGroup()">Delete</button>
+
         <div id="folderSelectContainer" class="container">
             <h2 id="promptMessage"></h2>
             <div class="mb-3">

@@ -1,178 +1,192 @@
 <!-- Separated client-side javascript https://developers.google.com/apps-script/guides/html/best-practices -->
 <script>
-    // clientScript.html
-    // This file contains the JavaScript code that handles user interactions for the Google Sheets processor.
-        let selectedOutputFolderId = null;
-        let selectedSheetLink = null;
-        let currentFolderId = null;
-        let selectedFolderId = null; // Added this based on navigateFolder usage
-        let duplicateFolderId = null; // Keep if needed for navigateUp logic
-        let duplicateFolderPath = null; // Keep if needed for navigateUp logic
-        let selectedFolderName = null;
-        let loadingCalls = 0;
-        function checkIfLoadingComplete() {
-          loadingCalls++;
-          if (loadingCalls === 2) {
-            $("#loading").hide();
-            $("#folders").show();
-            $('#confirmSelectBtn').show();
-            loadingCalls = 0;
-          }
-        }
-        function listFolders() {
-          // based on current folder ID to retrieve the folders
-          $("#folders").hide();
-          $('#confirmSelectBtn').hide();
-          $("#loading").show();
-          // call server-side functions to list folders within the current folder, generate folder path
-          google.script.run.withSuccessHandler(displayFolders).getFoldersInFolder(currentFolderId);
-          google.script.run.withSuccessHandler(displayPath).getFolderPath(currentFolderId);
-        }
-        function displayFolders(folderList) {
-          // clear displayed folders, display folders in the fold click selection area
-          let folderListParsed = JSON.parse(folderList);
-          let folderContainer = $("#folders");
-          folderContainer.empty();
-          // add folders - Simplified: always show simple list items
-          folderListParsed.forEach(function(folder) {
-            folderContainer.append(
-              // Removed checkbox and span, just the folder name is clickable
-              `<li id='${folder.id}' class="list-group-item" onclick="navigateFolder('${folder.id}', this, event)">${folder.name}</li>`
-            );
-          });
-          // loading check
-          checkIfLoadingComplete();
-        };
+  // clientScript.html
+  // This file contains the JavaScript code that handles user interactions for the Google Sheets processor.
+  let selectedOutputFolderId = null;
+  let selectedSheetLink = null;
+  let currentFolderId = null;
+  let selectedFolderId = null;
+  let duplicateFolderId = null;
+  let duplicateFolderPath = null;
+  let selectedFolderName = null;
+  let loadingCalls = 0;
+  let inputGroupCount = 1; // 跟踪输入框组数量，初始为 1
 
-        function displayPath(pathList) {
-          // display a path string
-          pathList = JSON.parse(pathList);
-          let pathContainer = $("#path");
-          pathContainer.empty();
+  function checkIfLoadingComplete() {
+    loadingCalls++;
+    if (loadingCalls === 2) {
+      $("#loading").hide();
+      $("#folders").show();
+      $('#confirmSelectBtn').show();
+      loadingCalls = 0;
+    }
+  }
+
+  function listFolders() {
+    $("#folders").hide();
+    $('#confirmSelectBtn').hide();
+    $("#loading").show();
+    google.script.run.withSuccessHandler(displayFolders).getFoldersInFolder(currentFolderId);
+    google.script.run.withSuccessHandler(displayPath).getFolderPath(currentFolderId);
+  }
+
+  function displayFolders(folderList) {
+    let folderListParsed = JSON.parse(folderList);
+    let folderContainer = $("#folders");
+    folderContainer.empty();
+    folderListParsed.forEach(function(folder) {
+      folderContainer.append(
+        `<li id='${folder.id}' class="list-group-item" onclick="navigateFolder('${folder.id}', this, event)">${folder.name}</li>`
+      );
+    });
+    checkIfLoadingComplete();
+  }
+
+  function displayPath(pathList) {
+    pathList = JSON.parse(pathList);
+    let pathContainer = $("#path");
+    pathContainer.empty();
+    let pathStr = pathList.map(folder => folder.name).join("/");
+    pathContainer.text(pathStr);
+    checkIfLoadingComplete();
+  }
+
+  function navigateFolder(folderId, element, event) {
+    if (selectedFolderId === folderId) {
+      currentFolderId = folderId;
+      selectedFolderId = null;
+      $("#selectedFolder").text("");
+      listFolders();
+    } else {
+      selectedFolderId = folderId;
+      console.log("Selected folder ID:", selectedFolderId);
+      selectedOutputFolderId = folderId;
+      $("#folders .list-group-item").removeClass('active');
+      $(element).addClass("active");
+      google.script.run.withSuccessHandler(function(pathStr) {
+           $("#selectedFolder").text("Selected folder: " + pathStr);
+           selectedFolderName = pathStr;
+      }).getFolderPathString(folderId);
+      console.log("Selected folder name:", selectedFolderName);
+      $('#confirmSelectBtn').show();
+    }
+  }
+
+  function navigateUp() {
+    console.log("navigateUp called. currentFolderId:", currentFolderId);
+    if (currentFolderId) {
+      if (duplicateFolderId && duplicateFolderId === currentFolderId) {
+        console.log("Cannot navigate up from the duplicate folder root.");
+        return;
+      }
+      $("#folders").hide();
+      $('#confirmSelectBtn').hide();
+      $("#loading").show();
+      selectedFolderId = null;
+      $("#selectedFolder").text("");
+      console.log("Calling google.script.run.getFolderPath for:", currentFolderId);
+      google.script.run.withSuccessHandler(function(pathList) {
+        console.log("getFolderPath success handler received:", pathList);
+        pathList = JSON.parse(pathList);
+        if (pathList.length > 1) {
           let pathStr = pathList.map(folder => folder.name).join("/");
-          pathContainer.text(pathStr);
-          // loading check
-          checkIfLoadingComplete();
-        }
-
-        function navigateFolder(folderId, element, event) {
-          // one-click: update selected folder
-          // two-click: navigate into the selected folder
-          // Removed checkbox check as checkboxes are gone
-          // if (event.target.type === 'checkbox') {
-          //   return;
-          // }
-          if (selectedFolderId === folderId) {
-            // Double-click detected (or second single click on the same item)
-            currentFolderId = folderId;
-            selectedFolderId = null; // Reset selection after navigating
-            $("#selectedFolder").text(""); // Clear selection text
-            listFolders();
-          } else {
-            // Single-click: Select the folder
-            selectedFolderId = folderId;
-            console.log("Selected folder ID:", selectedFolderId); // Added log
-            selectedOutputFolderId = folderId; // Assuming this is the ID you want to capture
-            $("#folders .list-group-item").removeClass('active');
-            $(element).addClass("active");
-            // Update selected folder display text
-            google.script.run.withSuccessHandler(function(pathStr) {
-                 $("#selectedFolder").text("Selected folder: " + pathStr);
-                 selectedFolderName = pathStr; // Store the selected folder name
-            }).getFolderPathString(folderId); // Get full path for display
-            console.log("Selected folder name:", selectedFolderName); // Added log
-            $('#confirmSelectBtn').show(); // Show confirm button on selection
-          }
-        }
-
-        function navigateUp() {
-          console.log("navigateUp called. currentFolderId:", currentFolderId); // Added log
-          if (currentFolderId) {
-            // if selected the folder to duplicate and it's the current folder
-            if (duplicateFolderId && duplicateFolderId === currentFolderId) {
-              console.log("Cannot navigate up from the duplicate folder root."); // Added log
+          console.log("Current path string:", pathStr);
+          if (duplicateFolderId){
+            console.log("Checking duplicate folder condition. duplicateFolderPath:", duplicateFolderPath);
+            if (pathStr.indexOf(duplicateFolderPath) < 0){
+              console.log("Path is outside duplicate folder path. Navigating back into duplicate folder:", duplicateFolderId);
+              currentFolderId = duplicateFolderId;
+              listFolders();
               return;
             }
-            $("#folders").hide();
-            $('#confirmSelectBtn').hide();
-            $("#loading").show();
-            selectedFolderId = null; // Reset selection when navigating up
-            $("#selectedFolder").text(""); // Clear selection text
-            console.log("Calling google.script.run.getFolderPath for:", currentFolderId); // Added log
-            google.script.run.withSuccessHandler(function(pathList) {
-              console.log("getFolderPath success handler received:", pathList); // Added log
-              pathList = JSON.parse(pathList);
-              if (pathList.length > 1) {
-                let pathStr = pathList.map(folder => folder.name).join("/");
-                console.log("Current path string:", pathStr); // Added log
-                if (duplicateFolderId){
-                  console.log("Checking duplicate folder condition. duplicateFolderPath:", duplicateFolderPath); // Added log
-                  // outside the selected duplication folder, go inside the duplication folder
-                  if (pathStr.indexOf(duplicateFolderPath) < 0){
-                    console.log("Path is outside duplicate folder path. Navigating back into duplicate folder:", duplicateFolderId); // Added log
-                    currentFolderId = duplicateFolderId;
-                    listFolders();
-                    return;
-                  }
-                }
-                // can navigate outside
-                // Navigate up to the parent folder (second to last in the path)
-                currentFolderId = pathList[pathList.length - 2].id;
-                console.log("Navigating up to parent folder:", currentFolderId); // Added log
-                listFolders();
-
-              } else {
-                 // At the root or only one level deep, cannot go further up
-                 console.log("Path list length is not greater than 1. Cannot navigate up further."); // Added log
-                 // Decide if you want to go to root (currentFolderId = null) or stay
-                 // currentFolderId = null; // Option: Go to root
-                 // listFolders();         // Option: Refresh root view
-                 // Or just show the current view again:
-                 $("#folders").show();
-                 $('#confirmSelectBtn').hide(); // Hide confirm button as we are not selecting when going up
-                 $("#loading").hide();
-              }
-            }).getFolderPath(currentFolderId);
-          } else {
-            console.log("navigateUp called but currentFolderId is null or empty (already at root)."); // Added log
           }
-        }
-        function processSheet() {
-          // Placeholder for processing the sheet
-          const inputSheetLink = $("#sheetLink").val();
-          if (inputSheetLink) {
-            console.log("Processing sheet with link:", inputSheetLink);
-            // Call server-side function to process the sheet
-            google.script.run.withSuccessHandler((res) => {
-                console.log(JSON.parse(res).message);
-                alert(JSON.parse(res).message);
-
-            }).processSheetData(selectedFolderId,inputSheetLink);
-          } else {
-            alert("Please enter a valid Google Sheets link.");
-          }
-        }
-      $(document).ready(function() {
-        listFolders();
-        $("#promptMessage").text("Select a folder to save results");
-        // Changed: Confirm button should likely trigger the final action now
-        $('#confirmSelectBtn').on('click', confirmOutputFolderSelection); // Renamed function for clarity
-        $('#confirmSelectBtn').hide(); // Initially hidden
-      });
-
-      // Renamed do_nothing for clarity
-      function confirmOutputFolderSelection(){
-        if (selectedOutputFolderId) {
-          console.log("Confirmed selection. Output Folder Id", selectedFolderId); // Added log
-          // Add your logic here to proceed with the selected folder ID
-          // For example, hide the folder selection and show the next step
-          // $("#folderSelectContainer").hide();
-          // $("#nextStepContainer").show();
-          // Or maybe call a server function:
-          // google.script.run.processWithFolder(selectedOutputFolderId, selectedSheetLink);
-          alert("Folder selected: " + selectedFolderName); // Placeholder action
+          currentFolderId = pathList[pathList.length - 2].id;
+          console.log("Navigating up to parent folder:", currentFolderId);
+          listFolders();
         } else {
-          alert("Please select a folder first.");
+          console.log("Path list length is not greater than 1. Cannot navigate up further.");
+          $("#folders").show();
+          $('#confirmSelectBtn').hide();
+          $("#loading").hide();
         }
+      }).getFolderPath(currentFolderId);
+    } else {
+      console.log("navigateUp called but currentFolderId is null or empty (already at root).");
+    }
+  }
+
+  // 新增：添加一组输入框
+  function addInputGroup() {
+    inputGroupCount++;
+    const inputGroups = $("#inputGroups");
+    const newGroup = `
+      <div class="input-group mb-3" data-index="${inputGroupCount}">
+          <div class="row w-100">
+              <div class="col-md-6">
+                  <label for="sheetLink${inputGroupCount}">Sheet Link ${inputGroupCount}:</label>
+                  <input type="text" id="sheetLink${inputGroupCount}" class="form-control" placeholder="Enter Google Sheets link" required>
+              </div>
+              <div class="col-md-6">
+                  <label for="campusName${inputGroupCount}">Campus Name ${inputGroupCount}:</label>
+                  <input type="text" id="campusName${inputGroupCount}" class="form-control" placeholder="Enter campus name" required>
+              </div>
+          </div>
+      </div>`;
+    inputGroups.append(newGroup);
+  }
+
+  // 新增：删除最后一组输入框
+  function deleteInputGroup() {
+    if (inputGroupCount > 1) {
+      $(`#inputGroups .input-group[data-index="${inputGroupCount}"]`).remove();
+      inputGroupCount--;
+    } else {
+      alert("至少需要保留一组输入框！");
+    }
+  }
+
+  // 修改：处理多个 Google Sheets 链接和校区名称
+  function processSheet() {
+    const inputGroups = $("#inputGroups .input-group");
+    const sheetData = [];
+    let hasValidInput = false;
+
+    inputGroups.each(function() {
+      const index = $(this).data("index");
+      const sheetLink = $(`#sheetLink${index}`).val();
+      const campusName = $(`#campusName${index}`).val();
+
+      if (sheetLink && campusName) {
+        sheetData.push({ sheetLink, campusName });
+        hasValidInput = true;
       }
+    });
+
+    if (hasValidInput && selectedOutputFolderId) {
+      console.log("Processing sheets:", sheetData);
+      google.script.run.withSuccessHandler((res) => {
+        const response = JSON.parse(res);
+        console.log(response.message);
+        alert(response.message);
+      }).processSheetData(selectedOutputFolderId, sheetData);
+    } else {
+      alert("请确保至少填写一组有效的 Google Sheets 链接和校区名称，并选择一个输出文件夹！");
+    }
+  }
+
+  $(document).ready(function() {
+    listFolders();
+    $("#promptMessage").text("Select a folder to save results");
+    $('#confirmSelectBtn').on('click', confirmOutputFolderSelection);
+    $('#confirmSelectBtn').hide();
+  });
+
+  function confirmOutputFolderSelection() {
+    if (selectedOutputFolderId) {
+      console.log("Confirmed selection. Output Folder Id", selectedOutputFolderId);
+      alert("Folder selected: " + selectedFolderName);
+    } else {
+      alert("Please select a folder first.");
+    }
+  }
 </script>
