@@ -284,7 +284,7 @@ try {
     var { classes, campusNames } = teacherSchedules[email];
     if (classes.length === 0) return;
 
-    // 使用首次出现的教师名字
+    // 使用首次出现的教师名字（仅用于日志，文件名不再依赖 teacherName）
     var teacherName = emailToTeacherMap[email] || 'Unknown';
     Logger.log(`Generating schedule for ${teacherName} (${email})`);
 
@@ -341,7 +341,7 @@ try {
 
       // 填充内容，首行包含校区名称
       var contents = [
-        `[${cls['Campus Name']}: ${formatTime(start)} - ${formatTime(end)}]`,
+        `${cls['Campus Name']}:[${formatTime(start)} - ${formatTime(end)}]`,
         cls['Course Name'] || '',
         cls['Room'] || '',
         cls['Course Type'] || '',
@@ -355,8 +355,25 @@ try {
       }
     });
 
+    // 检查文件夹中是否已存在包含该 email 的课表文件
+    var fileNamePrefix = `${email}'s Weekly Schedule`;
+    var iterator = folder.getFiles();
+    while (iterator.hasNext()) {
+      var file = iterator.next();
+      var fileName = file.getName();
+      if (fileName.includes(fileNamePrefix)) {
+        Logger.log(`Found existing file for ${email}: ${fileName}. Deleting.`);
+        file.setTrashed(true); // 删除旧文件
+      }
+    }
+
+    // 生成当前时间戳，格式为 YYYY-MM-DD HH:MM
+    var now = new Date();
+    var timeStamp = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
+    var fileName = `${email}'s Weekly Schedule (${timeStamp})`;
+
     // 创建新的 Google Sheet
-    var newSpreadsheet = SpreadsheetApp.create(`${teacherName}_${email}'s Weekly Schedule`);
+    var newSpreadsheet = SpreadsheetApp.create(fileName);
     var sheet = newSpreadsheet.getSheets()[0];
 
     // 设置表头
@@ -392,9 +409,10 @@ try {
     var file = DriveApp.getFileById(newSpreadsheet.getId());
     file.moveTo(folder);
 
-    // 分享文件给老师
+    // 分享文件给老师（仅查看权限）
     try {
-      file.addEditor(email);
+      file.addViewer(email);
+      Logger.log(`Shared file with ${email} as viewer.`);
     } catch (e) {
       Logger.log(`Failed to share file with ${email}: ${e.message}`);
     }
