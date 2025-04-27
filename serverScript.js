@@ -144,7 +144,7 @@ try {
   // 遍历每个 Sheet
   sheetData.forEach(({ sheetLink, campusName }, index) => {
     try {
-      Logger.log(`处理表格 ${index + 1}：${sheetLink}（校区：${campusName}）`);
+      Logger.log(`处理表格 ${index + 1}:${sheetLink}（校区：${campusName})`);
 
       // 提取 Sheet ID
       var sheetId = extractSheetId(sheetLink);
@@ -180,11 +180,11 @@ try {
         return;
       }
       if (controlData[1][0] !== 'generateTeacherSchedule?' || controlData[1][1].toString().toLowerCase() !== 'yes') {
-        Logger.log(`跳过 ${campusName}：generateTeacherSchedule? 不是 "Yes"。`);
+        Logger.log(`跳过 ${campusName}:generateTeacherSchedule? 不是 "Yes"。`);
         results.push({
           campusName,
           status: 'skipped',
-          message: `因为 Control flag 不是 Yes，所以跳过校区 ${campusName} 的处理。`
+          message: `因为 Control flag 不是 Yes,所以跳过校区 ${campusName} 的处理。`
         });
         return;
       }
@@ -212,7 +212,7 @@ try {
         results.push({
           campusName,
           status: 'error',
-          message: `校区 ${campusName} 的 "Teacher Data" 表缺少必要表头：Teacher, Email, NeedUpdate?`
+          message: `校区 ${campusName} 的 "Teacher Data" 表缺少必要表头: Teacher, Email, NeedUpdate?`
         });
         return;
       }
@@ -462,13 +462,13 @@ try {
     // 检查时间冲突
     if (teacherConflicts[email].hasConflict) {
       var conflictMessages = teacherConflicts[email].conflictDetails.map(c =>
-        `在 ${c.day}，${c.classA.campus} 的课程 ${c.classA.course}（${c.classA.time}）与 ${c.classB.campus} 的课程 ${c.classB.course}（${c.classB.time}）时间冲突`
+        `在 ${c.day}, ${c.classA.campus} 的课程 ${c.classA.course}(${c.classA.time}）与 ${c.classB.campus} 的课程 ${c.classB.course}(${c.classB.time}）时间冲突`
       );
-      Logger.log(`因时间冲突跳过为 ${email} 生成课表：${conflictMessages.join('；')}`);
+      Logger.log(`因时间冲突跳过为 ${email} 生成课表：${conflictMessages.join(';')}`);
       results.push({
         campusName: '教师课表',
         status: 'error',
-        message: `无法为教师 ${email}（${teacherName}）生成课表：${conflictMessages.join('；')}`
+        message: `无法为教师 ${email}(${teacherName}）生成课表：${conflictMessages.join(';')}`
       });
       return;
     }
@@ -476,11 +476,11 @@ try {
     var { classes, campusNames } = teacherSchedules[email];
     // 检查是否需要更新
     if (!teacherNeedUpdate[email]) {
-      Logger.log(`跳过为 ${email} 生成课表：NeedUpdate? 不是 "Yes"。`);
+      Logger.log(`跳过为 ${email} 生成课表:NeedUpdate? 不是 "Yes"。`);
       results.push({
         campusName: '教师课表',
         status: 'skipped',
-        message: `未为教师 ${email}（${teacherName}）生成课表：所有校区的 NeedUpdate? 均未设置为 Yes`
+        message: `未为教师 ${email}(${teacherName}）生成课表：所有校区的 NeedUpdate? 均未设置为 Yes`
       });
       return;
     }
@@ -490,12 +490,12 @@ try {
       results.push({
         campusName: '教师课表',
         status: 'warning',
-        message: `无法为教师 ${email}（${teacherName}）生成课表：未找到有效课程`
+        message: `无法为教师 ${email}(${teacherName}）生成课表：未找到有效课程`
       });
       return;
     }
 
-    Logger.log(`为 ${teacherName}（${email}）生成课表`);
+    Logger.log(`为 ${teacherName}(${email}）生成课表`);
 
     // 确定时间范围
     var times = [];
@@ -508,11 +508,11 @@ try {
     });
 
     if (times.length === 0) {
-      Logger.log(`为 ${teacherName}（${email}）无有效时间，跳过生成课表。`);
+      Logger.log(`为 ${teacherName}(${email}）无有效时间，跳过生成课表。`);
       results.push({
         campusName: '教师课表',
         status: 'warning',
-        message: `无法为教师 ${email}（${teacherName}）生成课表：未找到有效课程时间`
+        message: `无法为教师 ${email}(${teacherName}）生成课表：未找到有效课程时间`
       });
       return;
     }
@@ -630,15 +630,15 @@ try {
       results.push({
         campusName: '教师课表',
         status: 'success',
-        message: `为教师 ${email}（${teacherName}）成功生成课表`
+        message: `为教师 ${email}(${teacherName}）成功生成课表`
       });
     } catch (e) {
       results.push({
         campusName: '教师课表',
         status: 'warning',
-        message: `为教师 ${email}（${teacherName}）生成课表成功，但分享失败：${e.message}`
+        message: `为教师 ${email}(${teacherName}）生成课表成功，但分享失败：${e.message}`
       });
-      Logger.log(`无法将课表分享给 ${email}：${e.message}`);
+      Logger.log(`无法将课表分享给 ${email}:${e.message}`);
     }
   });
 
