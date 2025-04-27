@@ -390,7 +390,7 @@ try {
       results.push({
         campusName,
         status: 'error',
-        message: `处理校区 ${campusName}  Gabriella 失败：${e.message}`
+        message: `处理校区 ${campusName} 失败：${e.message}`
       });
     }
   });

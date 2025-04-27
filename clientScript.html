@@ -166,20 +166,15 @@
       console.log("Processing sheets:", sheetData);
       google.script.run.withSuccessHandler((res) => {
         const response = JSON.parse(res);
-        console.log(response.details ? response.message + '\n' + response.details);
-        alert(response.details ? response.message + '\n' + response.details);
+        console.log(response.details ? response.message + '\n' + JSON.stringify(response.details) : response.message);
+        alert(response.details ? response.message + '\n' + JSON.stringify(response.details) : response.message);
       }).processSheetData(selectedOutputFolderId, sheetData);
     } else {
       alert("请确保至少填写一组有效的 Google Sheets 链接和校区名称，并选择一个输出文件夹！");
     }
   }
 
-  $(document).ready(function() {
-    listFolders();
-    $("#promptMessage").text("Select a folder to save results");
-    $('#confirmSelectBtn').on('click', confirmOutputFolderSelection);
-    $('#confirmSelectBtn').hide();
-  });
+
 
   function confirmOutputFolderSelection() {
     if (selectedOutputFolderId) {
@@ -189,4 +184,10 @@
       alert("Please select a folder first.");
     }
   }
+  $(document).ready(function() {
+    listFolders();
+    $("#promptMessage").text("Select a folder to save results");
+    $('#confirmSelectBtn').on('click', confirmOutputFolderSelection);
+    $('#confirmSelectBtn').hide();
+  });
 </script>
