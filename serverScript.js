@@ -116,13 +116,18 @@ return date;
 function processSheetData(folderId, sheetData) {
 try {
   // 验证输入
-  if (!folderId) throw new Error('Output folder ID is missing.');
+  if (!folderId) throw new Error('输出文件夹 ID 缺失。');
   if (!sheetData || !Array.isArray(sheetData) || sheetData.length === 0) {
-    throw new Error('Sheet data is empty or invalid.');
+    throw new Error('表格数据为空或格式无效。');
   }
 
   // 获取输出文件夹
-  var folder = DriveApp.getFolderById(folderId);
+  var folder;
+  try {
+    folder = DriveApp.getFolderById(folderId);
+  } catch (e) {
+    throw new Error(`无法访问文件夹 ID ${folderId}：${e.message}`);
+  }
 
   // 全局教师映射：Email 到首次出现的教师名字
   var emailToTeacherMap = {};
@@ -130,6 +135,8 @@ try {
   var teacherToEmailMap = {};
   // 教师课表数据：{ email: { classes: [], campusNames: Set } }
   var teacherSchedules = {};
+  // 教师 NeedUpdate? 状态：{ email: boolean }
+  var teacherNeedUpdate = {};
 
   // 处理结果
   var results = [];
@@ -137,58 +144,133 @@ try {
   // 遍历每个 Sheet
   sheetData.forEach(({ sheetLink, campusName }, index) => {
     try {
-      Logger.log(`Processing sheet ${index + 1}: ${sheetLink} (Campus: ${campusName})`);
+      Logger.log(`处理表格 ${index + 1}：${sheetLink}（校区：${campusName}）`);
 
       // 提取 Sheet ID
       var sheetId = extractSheetId(sheetLink);
-      if (!sheetId) throw new Error('Invalid Google Sheet URL.');
+      if (!sheetId) {
+        results.push({
+          campusName,
+          status: 'error',
+          message: `校区 ${campusName} 的 Google Sheet 链接无效。`
+        });
+        return;
+      }
 
       // 打开 Google Sheet
       var spreadsheet = SpreadsheetApp.openById(sheetId);
 
       // 检查 Control 表
       var controlSheet = spreadsheet.getSheetByName('Control');
-      if (!controlSheet) throw new Error('Sheet "Control" not found.');
+      if (!controlSheet) {
+        results.push({
+          campusName,
+          status: 'error',
+          message: `校区 ${campusName} 缺少 "Control" 表。`
+        });
+        return;
+      }
       var controlData = controlSheet.getRange('A1:B2').getValues();
       if (controlData[0][0] !== 'Flag' || controlData[0][1] !== 'Value') {
-        throw new Error('Invalid headers in "Control" sheet.');
+        results.push({
+          campusName,
+          status: 'error',
+          message: `校区 ${campusName} 的 "Control" 表表头无效。`
+        });
+        return;
       }
       if (controlData[1][0] !== 'generateTeacherSchedule?' || controlData[1][1].toString().toLowerCase() !== 'yes') {
-        Logger.log(`Skipping ${campusName}: generateTeacherSchedule? is not "Yes".`);
+        Logger.log(`跳过 ${campusName}：generateTeacherSchedule? 不是 "Yes"。`);
         results.push({
           campusName,
           status: 'skipped',
-          message: 'generateTeacherSchedule? is not set to Yes.'
+          message: `因为 Control flag 不是 Yes，所以跳过校区 ${campusName} 的处理。`
         });
         return;
       }
 
       // 获取 Teacher Data 表
       var teacherSheet = spreadsheet.getSheetByName('Teacher Data');
-      if (!teacherSheet) throw new Error('Sheet "Teacher Data" not found.');
-      var teacherData = teacherSheet.getRange('A1:C' + teacherSheet.getLastRow()).getValues();
-      if (teacherData[0][0] !== 'Teacher' || teacherData[0][1] !== 'Email' || teacherData[0][2] !== 'NeedUpdate?') {
-        throw new Error('Invalid headers in "Teacher Data" sheet.');
+      if (!teacherSheet) {
+        results.push({
+          campusName,
+          status: 'error',
+          message: `校区 ${campusName} 缺少 "Teacher Data" 表。`
+        });
+        return;
       }
 
-      // 构建校区教师到 Email 的映射
+      // 获取表头行（第一行）
+      var lastColumn = teacherSheet.getLastColumn();
+      var headers = teacherSheet.getRange(1, 1, 1, lastColumn).getValues()[0];
+
+      // 查找所需表头的列索引
+      var teacherIndex = headers.indexOf('Teacher');
+      var emailIndex = headers.indexOf('Email');
+      var needUpdateIndex = headers.indexOf('NeedUpdate?');
+      if (teacherIndex === -1 || emailIndex === -1 || needUpdateIndex === -1) {
+        results.push({
+          campusName,
+          status: 'error',
+          message: `校区 ${campusName} 的 "Teacher Data" 表缺少必要表头：Teacher, Email, NeedUpdate?`
+        });
+        return;
+      }
+
+      // 获取数据（从第 2 行到最后一行，仅读取需要的列）
+      var lastRow = teacherSheet.getLastRow();
+      var teacherData = [];
+      if (lastRow > 1) { // 确保有数据行
+        var teacherCol = teacherSheet.getRange(2, teacherIndex + 1, lastRow - 1, 1).getValues().map(row => row[0]);
+        var emailCol = teacherSheet.getRange(2, emailIndex + 1, lastRow - 1, 1).getValues().map(row => row[0]);
+        var needUpdateCol = teacherSheet.getRange(2, needUpdateIndex + 1, lastRow - 1, 1).getValues().map(row => row[0]);
+        for (var i = 0; i < teacherCol.length; i++) {
+          teacherData.push([teacherCol[i], emailCol[i], needUpdateCol[i]]);
+        }
+      }
+
+      // 构建校区教师到 Email 的映射，并记录 NeedUpdate?
       teacherToEmailMap[campusName] = {};
-      for (var i = 1; i < teacherData.length; i++) {
+      for (var i = 0; i < teacherData.length; i++) {
         var teacherName = teacherData[i][0] ? teacherData[i][0].toString().trim() : '';
         var email = teacherData[i][1] ? teacherData[i][1].toString().trim() : '';
+        var needUpdate = teacherData[i][2] ? teacherData[i][2].toString().trim().toLowerCase() === 'yes' : false;
         if (teacherName && email) {
           teacherToEmailMap[campusName][teacherName] = email;
+          if (emailToTeacherMap[email] && emailToTeacherMap[email] !== teacherName) {
+            Logger.log(`警告：邮箱 ${email} 在校区 ${campusName} 对应多个教师名称：${emailToTeacherMap[email]} 和 ${teacherName}`);
+            results.push({
+              campusName,
+              status: 'warning',
+              message: `邮箱 ${email} 在校区 ${campusName} 对应多个教师名称：${emailToTeacherMap[email]} 和 ${teacherName}`
+            });
+          }
           if (!emailToTeacherMap[email]) {
             emailToTeacherMap[email] = teacherName; // 记录首次出现的教师名字
           }
+          teacherNeedUpdate[email] = teacherNeedUpdate[email] || needUpdate; // 记录 NeedUpdate? 状态
         }
       }
 
       // 获取 Course Data 表
       var courseSheet = spreadsheet.getSheetByName('Course Data');
-      if (!courseSheet) throw new Error('Sheet "Course Data" not found.');
+      if (!courseSheet) {
+        results.push({
+          campusName,
+          status: 'error',
+          message: `校区 ${campusName} 缺少 "Course Data" 表。`
+        });
+        return;
+      }
       var courseData = courseSheet.getDataRange().getValues();
-      if (courseData.length <= 1) throw new Error('No data found in "Course Data" sheet.');
+      if (courseData.length <= 1) {
+        results.push({
+          campusName,
+          status: 'error',
+          message: `校区 ${campusName} 的 "Course Data" 表没有数据。`
+        });
+        return;
+      }
 
       // 验证表头
       var headers = courseData[0];
@@ -198,7 +280,12 @@ try {
       ];
       var missingHeaders = requiredHeaders.filter(h => headers.indexOf(h) === -1);
       if (missingHeaders.length > 0) {
-        throw new Error(`Missing headers in "Course Data": ${missingHeaders.join(', ')}`);
+        results.push({
+          campusName,
+          status: 'error',
+          message: `校区 ${campusName} 的 "Course Data" 表缺少必要表头：${missingHeaders.join(', ')}`
+        });
+        return;
       }
 
       // 提取有效课程数据
@@ -207,39 +294,64 @@ try {
       var endTimeIndex = headers.indexOf('End Time');
       var teacherIndex = headers.indexOf('Teacher');
 
+      var validDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
       var filteredData = [];
       for (var i = 1; i < courseData.length; i++) {
-        if (courseData[i][weekdayIndex] && courseData[i][weekdayIndex].toString().trim() !== '') {
-          var row = courseData[i].slice();
-          // 格式化时间字段为 hh:mm
-          if (row[startTimeIndex] instanceof Date) {
-            row[startTimeIndex] = formatTime(row[startTimeIndex]);
-          }
-          if (row[endTimeIndex] instanceof Date) {
-            row[endTimeIndex] = formatTime(row[endTimeIndex]);
-          }
-          // 验证时间
-          var start = parseTime(row[startTimeIndex]);
-          var end = parseTime(row[endTimeIndex]);
-          if (!start || !end) {
-            Logger.log(`Warning: Invalid time format in ${campusName}, row ${i + 1}: Start=${row[startTimeIndex]}, End=${row[endTimeIndex]}`);
-            continue;
-          }
-          if (end.getTime() <= start.getTime()) {
-            Logger.log(`Warning: End time before start time in ${campusName}, row ${i + 1}: Start=${row[startTimeIndex]}, End=${row[endTimeIndex]}`);
-            continue;
-          }
-          // 检查异常长的课程（超过 3 小时）
-          var durationHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-          if (durationHours > 3) {
-            Logger.log(`Warning: Unusually long course in ${campusName}, row ${i + 1}: ${durationHours.toFixed(2)} hours`);
-          }
-          filteredData.push(row);
+        var weekday = courseData[i][weekdayIndex] ? courseData[i][weekdayIndex].toString().trim() : '';
+        // 验证 Weekday
+        if (!weekday || !validDays.includes(weekday)) {
+          results.push({
+            campusName,
+            status: 'warning',
+            message: `校区 ${campusName} 的 "Course Data" 表第 ${i + 1} 行 weekday 无效：${weekday}，该课程未加入课表。`
+          });
+          Logger.log(`警告：校区 ${campusName} 的第 ${i + 1} 行 weekday 无效：${weekday}`);
+          continue;
         }
+        var row = courseData[i].slice();
+        // 格式化时间字段为 hh:mm
+        if (row[startTimeIndex] instanceof Date) {
+          row[startTimeIndex] = formatTime(row[startTimeIndex]);
+        }
+        if (row[endTimeIndex] instanceof Date) {
+          row[endTimeIndex] = formatTime(row[endTimeIndex]);
+        }
+        // 验证时间
+        var start = parseTime(row[startTimeIndex]);
+        var end = parseTime(row[endTimeIndex]);
+        if (!start || !end) {
+          results.push({
+            campusName,
+            status: 'warning',
+            message: `校区 ${campusName} 的 "Course Data" 表第 ${i + 1} 行时间格式无效：开始时间=${row[startTimeIndex]}，结束时间=${row[endTimeIndex]}，该课程未加入课表。`
+          });
+          Logger.log(`警告：校区 ${campusName} 的第 ${i + 1} 行时间格式无效：开始时间=${row[startTimeIndex]}，结束时间=${row[endTimeIndex]}`);
+          continue;
+        }
+        if (end.getTime() <= start.getTime()) {
+          results.push({
+            campusName,
+            status: 'warning',
+            message: `校区 ${campusName} 的 "Course Data" 表第 ${i + 1} 行结束时间早于或等于开始时间：开始时间=${row[startTimeIndex]}，结束时间=${row[endTimeIndex]}，该课程未加入课表。`
+          });
+          Logger.log(`警告：校区 ${campusName} 的第 ${i + 1} 行结束时间早于或等于开始时间：开始时间=${row[startTimeIndex]}，结束时间=${row[endTimeIndex]}`);
+          continue;
+        }
+        // 检查异常长的课程（超过 3 小时）
+        var durationHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+        if (durationHours > 3) {
+          Logger.log(`警告：校区 ${campusName} 的第 ${i + 1} 行课程时间过长：${durationHours.toFixed(2)} 小时`);
+          results.push({
+            campusName,
+            status: 'warning',
+            message: `校区 ${campusName} 的 "Course Data" 表第 ${i + 1} 行课程时间过长：${durationHours.toFixed(2)} 小时`
+          });
+        }
+        filteredData.push(row);
       }
 
       // 处理课程数据
-      filteredData.forEach(row => {
+      filteredData.forEach((row, rowIndex) => {
         var teachers = row[teacherIndex].toString().split(',').map(t => t.trim());
         teachers.forEach(teacher => {
           if (teacher && teacherToEmailMap[campusName][teacher]) {
@@ -257,6 +369,13 @@ try {
             classInfo['Campus Name'] = campusName; // 添加校区名称
             teacherSchedules[email].classes.push(classInfo);
             teacherSchedules[email].campusNames.add(campusName);
+          } else if (teacher) {
+            results.push({
+              campusName,
+              status: 'warning',
+              message: `校区 ${campusName} 的 "Course Data" 表第 ${rowIndex + 2} 行教师 ${teacher} 未在 "Teacher Data" 表中找到，未加入课表。`
+            });
+            Logger.log(`警告：校区 ${campusName} 的第 ${rowIndex + 2} 行教师 ${teacher} 未在 "Teacher Data" 表中找到`);
           }
         });
       });
@@ -264,16 +383,74 @@ try {
       results.push({
         campusName,
         status: 'success',
-        message: `Processed ${filteredData.length} valid courses for ${campusName}.`
+        message: `成功处理校区 ${campusName} 的 ${filteredData.length} 门有效课程。`
       });
     } catch (e) {
-      Logger.log(`Error processing ${campusName}: ${e.message}`);
+      Logger.log(`处理校区 ${campusName} 出错：${e.message}`);
       results.push({
         campusName,
         status: 'error',
-        message: `Failed to process ${campusName}: ${e.message}`
+        message: `处理校区 ${campusName}  Gabriella 失败：${e.message}`
       });
     }
+  });
+
+  // 检测时间冲突并标记有冲突的教师
+  var teacherConflicts = {};
+  Object.keys(teacherSchedules).forEach(email => {
+    var { classes } = teacherSchedules[email];
+    teacherConflicts[email] = { hasConflict: false, conflictDetails: [] };
+
+    // 按 Weekday 分组课程
+    var classesByDay = {};
+    classes.forEach(cls => {
+      var day = cls['Weekday'];
+      if (!classesByDay[day]) classesByDay[day] = [];
+      classesByDay[day].push(cls);
+    });
+
+    // 检查每个 Weekday 的冲突
+    Object.keys(classesByDay).forEach(day => {
+      var dayClasses = classesByDay[day];
+      // 按开始时间排序，便于检查
+      dayClasses.sort((a, b) => {
+        var startA = parseTime(a['Start Time']);
+        var startB = parseTime(b['Start Time']);
+        return startA - startB;
+      });
+
+      // 两两比较课程
+      for (var i = 0; i < dayClasses.length; i++) {
+        for (var j = i + 1; j < dayClasses.length; j++) {
+          var classA = dayClasses[i];
+          var classB = dayClasses[j];
+          var startA = parseTime(classA['Start Time']);
+          var endA = parseTime(classA['End Time']);
+          var startB = parseTime(classB['Start Time']);
+          var endB = parseTime(classB['End Time']);
+
+          if (!startA || !endA || !startB || !endB) continue;
+
+          // 检查是否冲突（排除首尾相接）
+          if (startA < endB && startB < endA && !(endA.getTime() === startB.getTime()) && !(endB.getTime() === startA.getTime())) {
+            teacherConflicts[email].hasConflict = true;
+            teacherConflicts[email].conflictDetails.push({
+              day,
+              classA: {
+                campus: classA['Campus Name'],
+                course: classA['Course Name'],
+                time: `${classA['Start Time']}-${classA['End Time']}`
+              },
+              classB: {
+                campus: classB['Campus Name'],
+                course: classB['Course Name'],
+                time: `${classB['Start Time']}-${classB['End Time']}`
+              }
+            });
+          }
+        }
+      }
+    });
   });
 
   // 生成教师课表
@@ -281,12 +458,44 @@ try {
   var colorIndex = 0;
 
   Object.keys(teacherSchedules).forEach(email => {
-    var { classes, campusNames } = teacherSchedules[email];
-    if (classes.length === 0) return;
+    var teacherName = emailToTeacherMap[email] || '未知教师';
+    // 检查时间冲突
+    if (teacherConflicts[email].hasConflict) {
+      var conflictMessages = teacherConflicts[email].conflictDetails.map(c =>
+        `在 ${c.day}，${c.classA.campus} 的课程 ${c.classA.course}（${c.classA.time}）与 ${c.classB.campus} 的课程 ${c.classB.course}（${c.classB.time}）时间冲突`
+      );
+      Logger.log(`因时间冲突跳过为 ${email} 生成课表：${conflictMessages.join('；')}`);
+      results.push({
+        campusName: '教师课表',
+        status: 'error',
+        message: `无法为教师 ${email}（${teacherName}）生成课表：${conflictMessages.join('；')}`
+      });
+      return;
+    }
 
-    // 使用首次出现的教师名字（仅用于日志，文件名不再依赖 teacherName）
-    var teacherName = emailToTeacherMap[email] || 'Unknown';
-    Logger.log(`Generating schedule for ${teacherName} (${email})`);
+    var { classes, campusNames } = teacherSchedules[email];
+    // 检查是否需要更新
+    if (!teacherNeedUpdate[email]) {
+      Logger.log(`跳过为 ${email} 生成课表：NeedUpdate? 不是 "Yes"。`);
+      results.push({
+        campusName: '教师课表',
+        status: 'skipped',
+        message: `未为教师 ${email}（${teacherName}）生成课表：所有校区的 NeedUpdate? 均未设置为 Yes`
+      });
+      return;
+    }
+    // 检查空课程表
+    if (classes.length === 0) {
+      Logger.log(`为 ${email} 无有效课程，跳过生成课表。`);
+      results.push({
+        campusName: '教师课表',
+        status: 'warning',
+        message: `无法为教师 ${email}（${teacherName}）生成课表：未找到有效课程`
+      });
+      return;
+    }
+
+    Logger.log(`为 ${teacherName}（${email}）生成课表`);
 
     // 确定时间范围
     var times = [];
@@ -299,7 +508,12 @@ try {
     });
 
     if (times.length === 0) {
-      Logger.log(`No valid times for ${teacherName} (${email}). Skipping.`);
+      Logger.log(`为 ${teacherName}（${email}）无有效时间，跳过生成课表。`);
+      results.push({
+        campusName: '教师课表',
+        status: 'warning',
+        message: `无法为教师 ${email}（${teacherName}）生成课表：未找到有效课程时间`
+      });
       return;
     }
 
@@ -362,7 +576,7 @@ try {
       var file = iterator.next();
       var fileName = file.getName();
       if (fileName.includes(fileNamePrefix)) {
-        Logger.log(`Found existing file for ${email}: ${fileName}. Deleting.`);
+        Logger.log(`发现 ${email} 的现有课表文件：${fileName}，正在删除。`);
         file.setTrashed(true); // 删除旧文件
       }
     }
@@ -377,7 +591,7 @@ try {
     var sheet = newSpreadsheet.getSheets()[0];
 
     // 设置表头
-    var headerRow = ['Time', ...days];
+    var headerRow = ['时间', ...days.map(d => d === 'Monday' ? '星期一' : d === 'Tuesday' ? '星期二' : d === 'Wednesday' ? '星期三' : d === 'Thursday' ? '星期四' : d === 'Friday' ? '星期五' : d === 'Saturday' ? '星期六' : '星期日')];
     sheet.getRange(1, 1, 1, headerRow.length).setValues([headerRow]);
 
     // 设置时间列和课表数据
@@ -412,9 +626,19 @@ try {
     // 分享文件给老师（仅查看权限）
     try {
       file.addViewer(email);
-      Logger.log(`Shared file with ${email} as viewer.`);
+      Logger.log(`已将课表分享给 ${email}（仅查看权限）。`);
+      results.push({
+        campusName: '教师课表',
+        status: 'success',
+        message: `为教师 ${email}（${teacherName}）成功生成课表`
+      });
     } catch (e) {
-      Logger.log(`Failed to share file with ${email}: ${e.message}`);
+      results.push({
+        campusName: '教师课表',
+        status: 'warning',
+        message: `为教师 ${email}（${teacherName}）生成课表成功，但分享失败：${e.message}`
+      });
+      Logger.log(`无法将课表分享给 ${email}：${e.message}`);
     }
   });
 
@@ -422,7 +646,8 @@ try {
   var successCount = results.filter(r => r.status === 'success').length;
   var errorCount = results.filter(r => r.status === 'error').length;
   var skippedCount = results.filter(r => r.status === 'skipped').length;
-  var message = `Processed ${sheetData.length} sheets: ${successCount} succeeded, ${errorCount} failed, ${skippedCount} skipped.`;
+  var warningCount = results.filter(r => r.status === 'warning').length;
+  var message = `处理了 ${sheetData.length} 个校区表格：${successCount} 个成功，${errorCount} 个失败，${skippedCount} 个跳过，${warningCount} 个警告。`;
   Logger.log(message);
 
   return JSON.stringify({
@@ -431,11 +656,11 @@ try {
     details: results
   });
 } catch (e) {
-  Logger.log(`Fatal error: ${e.message}`);
+  Logger.log(`严重错误：${e.message}`);
   return JSON.stringify({
     status: 'error',
-    message: `Failed to process sheets: ${e.message}`,
-    details: []
+    message: `处理表格失败：${e.message}`,
+    details: results
   });
 }
 }

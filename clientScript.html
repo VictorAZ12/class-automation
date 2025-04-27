@@ -166,8 +166,8 @@
       console.log("Processing sheets:", sheetData);
       google.script.run.withSuccessHandler((res) => {
         const response = JSON.parse(res);
-        console.log(response.message);
-        alert(response.message);
+        console.log(response.details ? response.message + '\n' + response.details);
+        alert(response.details ? response.message + '\n' + response.details);
       }).processSheetData(selectedOutputFolderId, sheetData);
     } else {
       alert("请确保至少填写一组有效的 Google Sheets 链接和校区名称，并选择一个输出文件夹！");
