@@ -146,35 +146,59 @@
   }
 
   // 修改：处理多个 Google Sheets 链接和校区名称
-  function processSheet() {
+function processSheet() {
     const inputGroups = $("#inputGroups .input-group");
     const sheetData = [];
     let hasValidInput = false;
 
     inputGroups.each(function() {
-      const index = $(this).data("index");
-      const sheetLink = $(`#sheetLink${index}`).val();
-      const campusName = $(`#campusName${index}`).val();
+        const index = $(this).data("index");
+        const sheetLink = $(`#sheetLink${index}`).val();
+        const campusName = $(`#campusName${index}`).val();
 
-      if (sheetLink && campusName) {
-        sheetData.push({ sheetLink, campusName });
-        hasValidInput = true;
-      }
+        if (sheetLink && campusName) {
+            sheetData.push({ sheetLink, campusName });
+            hasValidInput = true;
+        }
     });
 
     if (hasValidInput && selectedOutputFolderId) {
-      console.log("Processing sheets:", sheetData);
-      google.script.run.withSuccessHandler((res) => {
-        // const response = JSON.parse(res);
-        // console.log(response.details ? response.message + '\n' + JSON.stringify(response.details) : response.message);
-        // alert(response.details ? response.message + '\n' + JSON.stringify(response.details) : response.message);
-        console.log(res);
-        alert(res);
-      }).processSheetData(selectedOutputFolderId, sheetData);
+        // 显示加载动画
+        $("#loadingOverlay").show();
+        // 禁用按钮
+        $("#processButton").prop("disabled", true);
+        console.log("Processing sheets:", sheetData);
+        google.script.run.withSuccessHandler((res) => {
+            // 隐藏加载动画
+            $("#loadingOverlay").hide();
+            
+            // 显示运行日志
+            $("#resultLog").text(res);
+            
+            // 设置跳转文件夹的链接
+            $("#openFolderBtn").attr("href", `https://drive.google.com/drive/folders/${selectedOutputFolderId}`);
+            
+            // 显示模态框
+            $("#resultModal").modal("show");
+
+            // 启用按钮
+            $("#processButton").prop("disabled", false);
+        }).withFailureHandler((error) => {
+            // 隐藏加载动画
+            $("#loadingOverlay").hide();
+            
+            // 显示错误信息
+            $("#resultLog").text(`处理失败：${error.message}`);
+            $("#openFolderBtn").hide(); // 失败时隐藏跳转按钮
+            $("#resultModal").modal("show");
+
+            // 启用按钮
+            $("#processButton").prop("disabled", false);
+        }).processSheetData(selectedOutputFolderId, sheetData);
     } else {
-      alert("请确保至少填写一组有效的 Google Sheets 链接和校区名称，并选择一个输出文件夹！");
+        alert("请确保至少填写一组有效的 Google Sheets 链接和校区名称，并选择一个输出文件夹！");
     }
-  }
+}
 
 
 
