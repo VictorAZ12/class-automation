@@ -642,25 +642,47 @@ try {
     }
   });
 
-  // 汇总结果
+// 汇总结果
   var successCount = results.filter(r => r.status === 'success').length;
   var errorCount = results.filter(r => r.status === 'error').length;
   var skippedCount = results.filter(r => r.status === 'skipped').length;
   var warningCount = results.filter(r => r.status === 'warning').length;
-  var message = `处理了 ${sheetData.length} 个校区表格：${successCount} 个成功，${errorCount} 个失败，${skippedCount} 个跳过，${warningCount} 个警告。`;
-  Logger.log(message);
 
-  return JSON.stringify({
-    status: 'success',
-    message,
-    details: results
+  // 生成按行分隔的易读输出
+  var outputLines = [];
+  outputLines.push(`处理了 ${sheetData.length} 个校区表格：${successCount} 个成功，${errorCount} 个失败，${skippedCount} 个跳过，${warningCount} 个警告。`);
+  outputLines.push(''); // 空行分隔
+  outputLines.push('处理详情：');
+  
+  results.forEach(result => {
+    var statusText;
+    switch (result.status) {
+      case 'success':
+        statusText = '成功';
+        break;
+      case 'error':
+        statusText = '错误';
+        break;
+      case 'skipped':
+        statusText = '跳过';
+        break;
+      case 'warning':
+        statusText = '警告';
+        break;
+      default:
+        statusText = result.status;
+    }
+    outputLines.push(`- ${result.campusName} (${statusText}): ${result.message}`);
   });
+
+  // 返回按行分隔的字符串
+  var finalOutput = outputLines.join('\n');
+  Logger.log(finalOutput);
+
+  return finalOutput;
 } catch (e) {
   Logger.log(`严重错误：${e.message}`);
-  return JSON.stringify({
-    status: 'error',
-    message: `处理表格失败：${e.message}`,
-    details: results
-  });
+  var errorOutput = `处理表格失败：${e.message}\n处理详情: \n${results.map(r => `- ${r.campusName} (${r.status}): ${r.message}`).join('\n')}`;
+  return errorOutput;
 }
-}
+} // 确保 processSheetData 函数的关闭
