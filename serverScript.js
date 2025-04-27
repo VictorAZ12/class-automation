@@ -122,6 +122,7 @@ function processGenerateCampusSchedule(spreadsheet, campusName, folderId, result
   results = [];
   try {
     Logger.log(`开始为校区 ${campusName} 生成课表`);
+    var folder = DriveApp.getFolderById(folderId); // 获取目标文件夹
 
     // 获取 Course Data 表
     var courseSheet = spreadsheet.getSheetByName('Course Data');
@@ -319,24 +320,76 @@ function processGenerateCampusSchedule(spreadsheet, campusName, folderId, result
     var colors = ['#f6d7b0', '#b7e1cd', '#b3cde3', '#f4c7c3'];
     var colorIndex = 0;
 
-    // 创建新的 Google Sheet
+    // 查找或创建 Google Sheet
+    var fileNamePrefix = `${campusName}_Timetable_`;
+    var existingFile = null;
+    var spreadsheetToUse = null;
+    var files = folder.getFiles();
+
+    while (files.hasNext()) {
+      var file = files.next();
+      if (file.getName().startsWith(fileNamePrefix) && !file.isTrashed()) {
+        existingFile = file;
+        spreadsheetToUse = SpreadsheetApp.openById(existingFile.getId());
+        Logger.log(`找到已存在的校区课表文件：${existingFile.getName()} (ID: ${existingFile.getId()})`);
+        break; // 找到第一个匹配的就使用
+      }
+    }
+
     var now = new Date();
     var timeStamp = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
-    var fileName = `${campusName}_Timetable_${timeStamp}`;
-    var newSpreadsheet = SpreadsheetApp.create(fileName);
-    Logger.log(`创建新 Google Sheet：${fileName}`);
+    var newFileName = `${fileNamePrefix}${timeStamp}`;
+    var isExistingFile = false; // 标记是否是更新现有文件
 
-    // 为每一天创建一个 sheet
+    if (spreadsheetToUse) {
+      isExistingFile = true;
+      Logger.log(`准备更新现有表格 ${existingFile.getName()} 的内容`);
+      var sheets = spreadsheetToUse.getSheets();
+
+      // 保留第一个 sheet，删除其他的
+      for (var i = sheets.length - 1; i > 0; i--) { // 从后往前删，避免索引问题
+        Logger.log(`删除旧 sheet: ${sheets[i].getName()}`);
+        spreadsheetToUse.deleteSheet(sheets[i]);
+      }
+      // 第一个 sheet 稍后会被重命名和清空
+      if (sheets.length > 0) {
+         Logger.log(`保留第一个旧 sheet: ${sheets[0].getName()}，稍后将重命名并清空`);
+      } else {
+         // 如果意外地没有 sheet 了（理论上不会发生，除非文件损坏），则创建一个临时的
+         spreadsheetToUse.insertSheet("temp_placeholder");
+         Logger.log("原文件没有 sheet，已创建临时 sheet");
+      }
+
+    } else {
+      // 创建新的 Google Sheet
+      spreadsheetToUse = SpreadsheetApp.create(newFileName);
+      Logger.log(`创建新 Google Sheet：${newFileName}`);
+    }
+
+    // 为每一天创建一个 sheet 并填充数据
     var days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     days.forEach((day, dayIndex) => {
       var sheet;
       if (dayIndex === 0) {
-        sheet = newSpreadsheet.getSheets()[0];
-        sheet.setName(day);
+        // 获取第一个 sheet (无论是保留的旧 sheet 还是新创建的默认 sheet)
+        sheet = spreadsheetToUse.getSheets()[0];
+        sheet.setName(day); // 重命名
+        sheet.clearContents(); // 清空内容
+        sheet.clearFormats(); // 清空格式 (可选，但推荐)
+        Logger.log(`重用/创建并清空第一个 sheet，命名为：${day}`);
       } else {
-        sheet = newSpreadsheet.insertSheet(day);
+        // 检查是否已存在同名 sheet (不太可能，因为前面删除了，但作为保险)
+        var existingDaySheet = spreadsheetToUse.getSheetByName(day);
+        if (existingDaySheet) {
+           sheet = existingDaySheet;
+           sheet.clearContents();
+           sheet.clearFormats();
+           Logger.log(`找到并清空已存在的 sheet：${day}`);
+        } else {
+           sheet = spreadsheetToUse.insertSheet(day);
+           Logger.log(`创建新 sheet：${day}`);
+        }
       }
-      Logger.log(`创建或重命名 sheet：${day}`);
 
       var dayData = filteredData.filter(row => {
         var weekday = row[weekdayIndex] ? row[weekdayIndex].toString().trim() : '';
@@ -442,18 +495,44 @@ function processGenerateCampusSchedule(spreadsheet, campusName, folderId, result
       }
     });
 
-    // 移动文件到指定文件夹
-    var folder = DriveApp.getFolderById(folderId);
-    var file = DriveApp.getFileById(newSpreadsheet.getId());
-    file.moveTo(folder);
-    Logger.log(`移动文件 ${fileName} 到文件夹 ${folderId}`);
-
-    results.push({
-      campusName,
-      status: 'success',
-      message: `成功为校区 ${campusName} 生成课表，文件名为 ${fileName}`
-    });
-    Logger.log(`成功为校区 ${campusName} 生成课表，文件名为 ${fileName}`);
+    // 删除可能存在的临时 sheet (如果之前创建了)
+    var tempSheet = spreadsheetToUse.getSheetByName("temp_placeholder");
+    if (tempSheet) {
+        spreadsheetToUse.deleteSheet(tempSheet);
+        Logger.log("删除了临时 placeholder sheet");
+    }
+    // 如果是新创建的文件，删除默认的 "Sheet1" (如果它不是第一个被重命名的 sheet)
+    if (!isExistingFile) {
+        var defaultSheet = spreadsheetToUse.getSheetByName('Sheet1');
+        // 只有当 Sheet1 存在且不是我们刚刚创建的第一个工作表 (比如 Monday) 时才删除
+        if (defaultSheet && spreadsheetToUse.getSheets().length > days.length) {
+            spreadsheetToUse.deleteSheet(defaultSheet);
+            Logger.log("删除了新文件中的默认 Sheet1");
+        }
+    }
+    
+    // 处理文件：重命名或移动
+    if (existingFile) {
+      // 重命名现有文件以更新时间戳
+      existingFile.setName(newFileName);
+      Logger.log(`已更新文件名为：${newFileName}`);
+      results.push({
+        campusName,
+        status: 'success',
+        message: `成功更新校区 ${campusName} 的课表，文件名为 ${newFileName}`
+      });
+    } else {
+      // 移动新创建的文件到指定文件夹
+      var file = DriveApp.getFileById(spreadsheetToUse.getId());
+      file.moveTo(folder);
+      Logger.log(`移动文件 ${newFileName} 到文件夹 ${folderId}`);
+      results.push({
+        campusName,
+        status: 'success',
+        message: `成功为校区 ${campusName} 生成课表，文件名为 ${newFileName}`
+      });
+    }
+    Logger.log(`处理校区 ${campusName} 课表完成`);
   } catch (e) {
     Logger.log(`为校区 ${campusName} 生成课表失败：${e.message}`);
     results.push({
