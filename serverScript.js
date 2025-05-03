@@ -116,10 +116,10 @@ return date;
  * @returns {void}
  */
 function processGenerateCampusSchedule(spreadsheet, campusName, folderId, results) {
-  spreadsheet = SpreadsheetApp.openById('1SoBVlLIIrOkcrqvrLgwUzm5IH9RenEp_67F9dAdMINs');
-  campusName = 'CampusA';
-  folderId = '1xg9SjmOe_uIDKr8BzDwWpyPMhzyNWgXX';
-  results = [];
+  // spreadsheet = SpreadsheetApp.openById('1SoBVlLIIrOkcrqvrLgwUzm5IH9RenEp_67F9dAdMINs');
+  // campusName = 'CampusA';
+  // folderId = '1xg9SjmOe_uIDKr8BzDwWpyPMhzyNWgXX';
+  // results = [];
   try {
     Logger.log(`开始为校区 ${campusName} 生成课表`);
     var folder = DriveApp.getFolderById(folderId); // 获取目标文件夹
@@ -443,8 +443,8 @@ function processGenerateCampusSchedule(spreadsheet, campusName, folderId, result
       
               var contents = [
                 `[${formatTime(start)} - ${formatTime(end)}]`,
-                row[courseNameIndex] || '',
                 row[headers.indexOf('Teacher')] || '',
+                row[courseNameIndex] || '',
                 row[headers.indexOf('Course Type')] || '',
                 row[headers.indexOf('Notes')] || ''
               ];
@@ -542,6 +542,7 @@ function processGenerateCampusSchedule(spreadsheet, campusName, folderId, result
     });
   }
 }
+
 
 /**
  * 处理多个 Google Sheets 的数据，生成教师课表和校区课表
@@ -1013,7 +1014,7 @@ function processSheetData(folderId, sheetData) {
       var newSpreadsheet = SpreadsheetApp.create(fileName);
       var sheet = newSpreadsheet.getSheets()[0];
 
-      var headerRow = ['时间', ...days.map(d => d === 'Monday' ? '星期一' : d === 'Tuesday' ? '星期二' : d === 'Wednesday' ? '星期三' : d === 'Thursday' ? '星期四' : d === 'Friday' ? '星期五' : d === 'Saturday' ? '星期六' : '星期日')];
+      var headerRow = ['Time', ...days];
       sheet.getRange(1, 1, 1, headerRow.length).setValues([headerRow]);
 
       var timeLabels = timeSlots.map(t => formatTime(t));
